@@ -39,10 +39,10 @@ Traditional business software (QuickBooks, Xero, Sage): 500MB–1.5GB bloat, $15
 BiB v5.1: 385KB eternal seed — sovereign, self-teaching, gift-economy DNA. No vaporware: The vessel contains its own 48-slide recursive knowledge system for mastery from beginner to advanced in months.
 
 Live Demo (installable PWA – offline after load):  
-[https://mindful-consumer.github.io/bib/main/business-in-a-box-v5.1.html](https://mindful-consumer.github.io/bib/main/business-in-a-box-v5.1.html)
+[https://mindful-consumer.github.io/bib/main/business-in-a-box-v5.1.html](https://github.com/mindful-consumer/bib/blob/main/business-in-a-box-v5.1.html)
 
 Direct Download:  
-[Download v5.1](https://mindful-consumer.github.io/bib/main/business-in-a-box-v5.1.html)
+[Download v5.1](https://github.com/mindful-consumer/bib/blob/main/business-in-a-box-v5.1.html)
 
 ## 🚀 Quick Start
 
