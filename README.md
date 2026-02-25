@@ -7,7 +7,7 @@ This is not software. This is **realware** — a complete, self-teaching, self-r
 
 Built for the ones the enterprise stack left behind: micro-entrepreneurs in Trinidad & Tobago, Suriname co-ops, Laventille vendors, SIDS communities — anyone who needs sovereignty when connectivity fails or subscriptions drain margins.
 
-### What One File Carries (v5.7 Planetary Evolution)
+### What One File Carries (v5.8 Planetary Evolution)
 
 - Multi-vessel registry (unlimited isolated businesses on one device)  
 - Double-entry accounting, full General Ledger, Balance Sheet, Income Statement  
