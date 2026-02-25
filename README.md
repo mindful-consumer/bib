@@ -1,13 +1,13 @@
-# Business in a Box v5.8 — Sovereign Realware BOS
+# Business in a Box v6.0 — Sovereign Realware BOS
 
-**One 528 KB HTML file.**  
+**One 658 KB HTML file.**  
 **No server. No database. No subscription. No account. No permission required.**
 
 This is not software. This is **realware** — a complete, self-teaching, self-replicating Business Operating System compressed into a single eternal seed.
 
 Built for the ones the enterprise stack left behind: micro-entrepreneurs in Trinidad & Tobago, Suriname co-ops, Laventille vendors, SIDS communities — anyone who needs sovereignty when connectivity fails or subscriptions drain margins.
 
-### What One File Carries (v5.8 Planetary Evolution)
+### What One File Carries (v6.0 Planetary Evolution)
 
 - Multi-vessel registry (unlimited isolated businesses on one device)  
 - Double-entry accounting, full General Ledger, Balance Sheet, Income Statement  
@@ -26,7 +26,7 @@ Built for the ones the enterprise stack left behind: micro-entrepreneurs in Trin
 
 **Size comparison (2026 reality)**  
 Traditional tools: 500 MB – 1.5 GB + $15–$200+/month  
-BiB v5.8: 562 KB — eternal, zero recurring cost, zero cloud dependency.
+BiB v5.8: 658 KB — eternal, zero recurring cost, zero cloud dependency.
 
 ### The Pattern: Compressed Intelligence at Planetary Scale
 
@@ -64,7 +64,7 @@ Seeking:
 
 Repository: https://github.com/mindful-consumer/bib  
 Live demo: https://mindful-consumer.github.io/bib/  
-Raw vessel (for offline use): https://github.com/mindful-consumer/bib/blob/main/business-in-a-box-v5.8.html
+Raw vessel (for offline use): https://github.com/mindful-consumer/bib/blob/main/business-in-a-box-v6.0.html
 
 The vessel is complete.  
 The knowledge is embedded.  
