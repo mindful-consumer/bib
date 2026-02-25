@@ -64,7 +64,7 @@ Seeking:
 
 Repository: https://github.com/mindful-consumer/bib  
 Live demo: https://mindful-consumer.github.io/bib/  
-Raw vessel (for offline use): https://github.com/mindful-consumer/bib/blob/main/business-in-a-box-v6.0.html
+Raw vessel (for offline use): https://github.com/mindful-consumer/bib/blob/main/index.html
 
 The vessel is complete.  
 The knowledge is embedded.  
