@@ -1007,12 +1007,18 @@ this.showWelcome();
 }
 
 static createNewVessel(){
+// Public vessel cap: 3 businesses by sovereign design
+const registry=VesselManager.getRegistry();
+const isWeb=window.location.protocol==='https:'||window.location.protocol==='http:';
+if(isWeb&&registry.length>=3){
+this.alert('Your public fleet is full (3 vessels).\n\nThe sovereign vessel is a gift — download it once and run an unlimited fleet on any device, forever.\n\nUse the ⬇️ Download button to take full ownership.');
+return;
+}
 document.getElementById('vessel-selector').classList.remove('show');
 // Set default theme for wizard
 document.documentElement.setAttribute('data-theme','ubuntu');
 this.cfg={theme:'ubuntu'};
 // Add cancel button if coming from selector (existing vessels)
-const registry=VesselManager.getRegistry();
 const wizActs=document.getElementById('wiz-acts');
 if(registry.length>0){
 wizActs.innerHTML='<button class="btn btn-sec" onclick="BOS.cancelNewVessel()">Cancel</button><button class="btn" id="wiz-back" disabled onclick="BOS.wizBack()">← Back</button><button class="btn" id="wiz-next" onclick="BOS.wizNext()">Next →</button>';
@@ -3662,7 +3668,7 @@ if(!hasVessels){
 anchor.style.color='var(--p)';
 title.textContent='Welcome Aboard';
 subtitle.textContent=isWeb?
-'You are about to commission your sovereign business vessel. Your data will stay on this device — forever. Download the vessel to take full ownership.':
+'You are about to commission your first vessel. Your data stays on this device — forever. The sovereign vessel is a gift: download it to run an unlimited fleet, anywhere.':
 'You are about to commission your sovereign business vessel. Everything runs offline. No internet. No subscription. No permission required.';
 primaryBtn.textContent='⚓ Commission Your Vessel';
 primaryBtn.className='btn';
@@ -3671,11 +3677,18 @@ this._welcomeAction='new';
 // Returning captain
 const current=VesselManager.getCurrentVessel()||registry[registry.length-1];
 anchor.textContent=current.icon||'⚓';
-title.textContent='Welcome Back, Captain';
-subtitle.textContent='You have '+registry.length+' vessel'+(registry.length>1?'s':'')+' in your fleet. Select one to board or commission a new vessel.';
-// Show ALL vessels — no display cap (scrollable container for fleets)
-// Sort: most recently accessed first
+// Public vessel (isWeb) has a 3-vessel preview fleet — by sovereign design.
+// Sovereign vessel (file/LAN) is unlimited.
+const webCap=3;
+const atWebCap=isWeb&&registry.length>=webCap;
+// Display: sovereign shows all; public shows all up to cap (they're all within 3)
 const display=[...registry].sort((a,b)=>new Date(b.lastAccessed)-new Date(a.lastAccessed));
+title.textContent='Welcome Back, Captain';
+if(atWebCap){
+subtitle.textContent='Your public fleet is full ('+registry.length+' vessels). Download your sovereign vessel for an unlimited fleet — it\'s a gift.';
+}else{
+subtitle.textContent='You have '+registry.length+' vessel'+(registry.length>1?'s':'')+' in your fleet. Select one to board'+(isWeb?' — or download for unlimited vessels.':' or commission a new one.');
+}
 const scrollStyle=display.length>4?'max-height:14rem;overflow-y:auto;scrollbar-width:thin;':'';
 let vhtml=`<div style="display:grid;gap:.5rem;margin-bottom:1rem;${scrollStyle}">`;
 display.forEach(v=>{
@@ -3688,14 +3701,37 @@ vhtml+=`<div onclick="BOS.welcomeSelectVessel('${v.id}')" style="background:${is
 </div>
 </div>`;
 });
+// Gift nudge — shown only on public vessel at cap
+if(atWebCap){
+vhtml+=`<div style="margin-top:.75rem;padding:.75rem 1rem;background:linear-gradient(135deg,#1a2a1a,#0d1a0d);border:1px solid #2a4a2a;border-radius:8px;text-align:center">
+<div style="color:#8bc48b;font-size:.8rem;line-height:1.5">
+🌱 <strong style="color:#aed9ae">The sovereign vessel is a gift.</strong><br>
+Download once. Run anywhere. Unlimited fleet. No account. No cloud.<br>
+<span style="opacity:.7;font-size:.75rem">Your data stays on your device — forever.</span>
+</div>
+</div>`;
+}
 vhtml+='</div>';
 vesselList.innerHTML=vhtml;
 primaryBtn.textContent='⚓ Board Last Vessel';
 primaryBtn.className='btn';
 this._welcomeLastVesselId=current.id;
 this._welcomeAction='board';
+if(atWebCap){
+// At cap on public vessel — replace commission button with download gift
+secondaryBtn.textContent='⬇️ Download Your Sovereign Vessel';
+secondaryBtn.style.display='block';
+secondaryBtn.onclick=()=>{
+const a=document.createElement('a');
+a.href=window.location.href;
+a.download='business-in-a-box.html';
+a.click();
+};
+}else{
 secondaryBtn.textContent='➕ Commission New Vessel';
 secondaryBtn.style.display='block';
+secondaryBtn.onclick=null; // restore default (HTML onclick attr handles it)
+}
 }
 
 // Update footer version line
