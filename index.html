@@ -3672,15 +3672,18 @@ this._welcomeAction='new';
 const current=VesselManager.getCurrentVessel()||registry[registry.length-1];
 anchor.textContent=current.icon||'⚓';
 title.textContent='Welcome Back, Captain';
-subtitle.textContent='Your vessel'+(registry.length>1?' fleet is':' is')+' ready. Select a vessel to continue or commission a new one.';
-// Show vessel cards (max 3 for space)
-const display=registry.slice(-3).reverse();
-let vhtml='<div style="display:grid;gap:.5rem;margin-bottom:1rem">';
+subtitle.textContent='You have '+registry.length+' vessel'+(registry.length>1?'s':'')+' in your fleet. Select one to board or commission a new vessel.';
+// Show ALL vessels — no display cap (scrollable container for fleets)
+// Sort: most recently accessed first
+const display=[...registry].sort((a,b)=>new Date(b.lastAccessed)-new Date(a.lastAccessed));
+const scrollStyle=display.length>4?'max-height:14rem;overflow-y:auto;scrollbar-width:thin;':'';
+let vhtml=`<div style="display:grid;gap:.5rem;margin-bottom:1rem;${scrollStyle}">`;
 display.forEach(v=>{
-vhtml+=`<div onclick="BOS.welcomeSelectVessel('${v.id}')" style="background:#2A2A2A;border:1px solid #444;border-radius:8px;padding:.75rem 1rem;cursor:pointer;display:flex;align-items:center;gap:.75rem;transition:border-color .2s" onmouseover="this.style.borderColor='var(--p)'" onmouseout="this.style.borderColor='#444'">
+const isActive=v.id===VesselManager.currentVesselId;
+vhtml+=`<div onclick="BOS.welcomeSelectVessel('${v.id}')" style="background:${isActive?'#1a3a1a':'#2A2A2A'};border:1px solid ${isActive?'var(--p)':'#444'};border-radius:8px;padding:.75rem 1rem;cursor:pointer;display:flex;align-items:center;gap:.75rem;transition:border-color .2s" onmouseover="this.style.borderColor='var(--p)'" onmouseout="this.style.borderColor='${isActive?'var(--p)':'#444'}'">
 <span style="font-size:1.5rem">${v.icon||'🏢'}</span>
-<div style="text-align:left">
-<div style="color:#FFF;font-weight:600;font-size:.9rem">${v.name}</div>
+<div style="text-align:left;flex:1;min-width:0">
+<div style="color:#FFF;font-weight:600;font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${v.name}${isActive?' ✓':''}</div>
 <div style="color:#777;font-size:.75rem">${v.type} · Last used ${v.lastAccessed?new Date(v.lastAccessed).toLocaleDateString():''}</div>
 </div>
 </div>`;
