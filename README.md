@@ -1,4 +1,4 @@
-# Business in a Box v5.7 — Sovereign Realware BOS
+# Business in a Box v5.8 — Sovereign Realware BOS
 
 **One 528 KB HTML file.**  
 **No server. No database. No subscription. No account. No permission required.**
@@ -26,7 +26,7 @@ Built for the ones the enterprise stack left behind: micro-entrepreneurs in Trin
 
 **Size comparison (2026 reality)**  
 Traditional tools: 500 MB – 1.5 GB + $15–$200+/month  
-BiB v5.7: 385 KB — eternal, zero recurring cost, zero cloud dependency.
+BiB v5.8: 562 KB — eternal, zero recurring cost, zero cloud dependency.
 
 ### The Pattern: Compressed Intelligence at Planetary Scale
 
@@ -64,7 +64,7 @@ Seeking:
 
 Repository: https://github.com/mindful-consumer/bib  
 Live demo: https://mindful-consumer.github.io/bib/  
-Raw vessel (for offline use): https://github.com/mindful-consumer/bib/blob/main/business-in-a-box-v5.7.html
+Raw vessel (for offline use): https://github.com/mindful-consumer/bib/blob/main/business-in-a-box-v5.8.html
 
 The vessel is complete.  
 The knowledge is embedded.  
