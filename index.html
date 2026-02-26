@@ -467,12 +467,26 @@ this.deviceId='device_'+Date.now()+'_'+Math.random().toString(36).substr(2,9);
 localStorage.setItem('bib-device-id',this.deviceId);
 }
 this.currentVesselId=sessionStorage.getItem('bib-current-vessel');
+// Seed HWM from registry if not yet set (upgrade path for existing users)
+const isWeb=window.location.protocol==='https:'||window.location.protocol==='http:';
+if(isWeb&&!localStorage.getItem('bib-web-hwm')){
+const existing=this.getRegistry().length;
+if(existing>0)localStorage.setItem('bib-web-hwm',String(existing));
+}
 return this.currentVesselId;
 }
 
 static getRegistry(){
 const r=localStorage.getItem('bib-vessel-registry');
 return r?JSON.parse(r):[];
+}
+
+static getWebHWM(){
+// High-water mark: total vessels ever commissioned on public vessel.
+// Never decremented by deletion. Sovereign vessels always return 0.
+const isWeb=window.location.protocol==='https:'||window.location.protocol==='http:';
+if(!isWeb)return 0;
+return parseInt(localStorage.getItem('bib-web-hwm')||'0');
 }
 
 static saveRegistry(registry){
@@ -491,6 +505,13 @@ createdAt:new Date().toISOString(),
 lastAccessed:new Date().toISOString()
 });
 this.saveRegistry(registry);
+// Permanent high-water mark — counts every vessel ever commissioned on this
+// public context. Deletion never decrements it. Sovereign vessels ignore it.
+const isWeb=window.location.protocol==='https:'||window.location.protocol==='http:';
+if(isWeb){
+const hwm=parseInt(localStorage.getItem('bib-web-hwm')||'0')+1;
+localStorage.setItem('bib-web-hwm',String(hwm));
+}
 this.setCurrentVessel(vesselId);
 return vesselId;
 }
@@ -1010,7 +1031,7 @@ static createNewVessel(){
 // Public vessel cap: 3 businesses by sovereign design
 const registry=VesselManager.getRegistry();
 const isWeb=window.location.protocol==='https:'||window.location.protocol==='http:';
-if(isWeb&&registry.length>=3){
+if(isWeb&&VesselManager.getWebHWM()>=3){
 this.alert('Your public fleet is full (3 vessels).\n\nThe sovereign vessel is a gift — download it once and run an unlimited fleet on any device, forever.\n\nUse the ⬇️ Download button to take full ownership.');
 return;
 }
@@ -3680,7 +3701,9 @@ anchor.textContent=current.icon||'⚓';
 // Public vessel (isWeb) has a 3-vessel preview fleet — by sovereign design.
 // Sovereign vessel (file/LAN) is unlimited.
 const webCap=3;
-const atWebCap=isWeb&&registry.length>=webCap;
+// Use permanent high-water mark — deletion cannot reset the cap
+const webHWM=VesselManager.getWebHWM();
+const atWebCap=isWeb&&webHWM>=webCap;
 // Display: sovereign shows all; public shows all up to cap (they're all within 3)
 const display=[...registry].sort((a,b)=>new Date(b.lastAccessed)-new Date(a.lastAccessed));
 title.textContent='Welcome Back, Captain';
