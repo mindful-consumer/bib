@@ -3728,12 +3728,7 @@ if(atWebCap){
 // At cap on public vessel — replace commission button with download gift
 secondaryBtn.textContent='⬇️ Download Your Sovereign Vessel';
 secondaryBtn.style.display='block';
-secondaryBtn.onclick=()=>{
-const a=document.createElement('a');
-a.href=window.location.href;
-a.download='business-in-a-box.html';
-a.click();
-};
+secondaryBtn.onclick=()=>{ BOS.downloadVesselCode(); };
 }else{
 secondaryBtn.textContent='➕ Commission New Vessel';
 secondaryBtn.style.display='block';
