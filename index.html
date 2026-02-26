@@ -4303,6 +4303,8 @@ static saveProfile(){
 const oldName=this.cfg.name;
 this.cfg.name=document.getElementById('prof-name').value;
 this.cfg.structure=document.getElementById('prof-structure').value;
+const profTypeEl=document.getElementById('prof-type');
+if(profTypeEl)this.cfg.type=profTypeEl.value;
 // Handle industry "Other" option
 const industrySelect=document.getElementById('prof-industry');
 const industryOther=document.getElementById('prof-industry-other');
@@ -4374,6 +4376,7 @@ const vessel=registry.find(v=>v.id===VesselManager.currentVesselId);
 if(vessel){
 vessel.name=this.cfg.name;
 vessel.icon=this.cfg.icon||vessel.icon;
+vessel.type=this.cfg.type||vessel.type;
 VesselManager.saveRegistry(registry);
 }
 
