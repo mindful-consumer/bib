@@ -434,7 +434,7 @@ Contributions are processed securely via Stripe. Each is recorded in your vessel
 <!-- Expanded View -->
 <div class="exp" id="exp">
 <div class="exp-hdr">
-<button class="btn" id="btn-back-cards" onclick="BOS.close()">← Back to Cards</button>
+<button class="btn" id="btn-back-cards" onclick="BOS._guardNav(()=>BOS.close())">← Back to Cards</button>
 <h2 id="exp-title" style="font-size:1.75rem;font-weight:700;color:var(--p)"></h2>
 </div>
 <div class="exp-body" id="exp-body"></div>
@@ -467,12 +467,7 @@ this.deviceId='device_'+Date.now()+'_'+Math.random().toString(36).substr(2,9);
 localStorage.setItem('bib-device-id',this.deviceId);
 }
 this.currentVesselId=sessionStorage.getItem('bib-current-vessel');
-// Seed HWM from registry if not yet set (upgrade path for existing users)
-const isWeb=(window.location.hostname.endsWith('.github.io')||window.location.hostname==='mindful-consumer.github.io');
-if(isWeb&&!localStorage.getItem('bib-web-hwm')){
-const existing=this.getRegistry().length;
-if(existing>0)localStorage.setItem('bib-web-hwm',String(existing));
-}
+// HWM is written only by registerVessel — no seeding needed
 return this.currentVesselId;
 }
 
@@ -3938,6 +3933,7 @@ this.rProfile();
 
 static saveProfile(){
 this.cfg.name=document.getElementById('prof-name').value;
+this.cfg.type=document.getElementById('prof-type').value;
 this.cfg.regNumber=document.getElementById('prof-reg').value;
 this.cfg.established=document.getElementById('prof-est').value;
 this.cfg.fiscalYearEnd=document.getElementById('prof-fiscal').value;
@@ -4096,6 +4092,7 @@ h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">';
 h+='<div class="form-group"><label class="form-label" for="prof-structure">Business Structure</label><select class="form-select" id="prof-structure" name="biz-structure"><option value="">Select...</option>';
 ['Sole Proprietorship','Partnership','LLC','Corporation','Other'].forEach(s=>h+=`<option value="${s.toLowerCase().replace(/ /g,'_')}" ${this.cfg.structure===s.toLowerCase().replace(/ /g,'_')?'selected':''}>${s}</option>`);
 h+='</select></div>';
+h+='<div class="form-group"><label class="form-label" for="prof-type">Business Type</label><select class="form-select" id="prof-type" name="biz-type"><option value="products" '+(this.cfg.type==='products'?'selected':'')+'>🛒 Products</option><option value="services" '+(this.cfg.type==='services'?'selected':'')+'>🔧 Services</option><option value="both" '+(this.cfg.type==='both'||!this.cfg.type?'selected':'')+'>📦 Products & Services</option></select></div>';
 h+='<div class="form-group"><label class="form-label" for="prof-industry">Industry</label><select class="form-select" id="prof-industry" name="biz-industry" onchange="BOS.toggleIndustryOther(this)"><option value="">Select...</option>';
 const industries=['Retail','Food Service','Professional Services','Construction','Healthcare','Technology','Manufacturing','Agriculture','Education','Transportation','Hospitality','Real Estate','Other'];
 const isOtherIndustry=this.cfg.industry&&!industries.includes(this.cfg.industry);
