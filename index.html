@@ -308,7 +308,7 @@ Contributions are processed securely via Stripe. Each is recorded in your vessel
 <p id="welcome-subtitle" style="color:#AAAAAA;font-size:1rem;margin:0 0 2rem;line-height:1.6"></p>
 <div id="welcome-vessel-list" style="margin-bottom:1.5rem"></div>
 <button id="welcome-primary-btn" class="btn" style="width:100%;padding:1rem;font-size:1rem;margin-bottom:.75rem" onclick="BOS.welcomePrimary()"></button>
-<button id="welcome-secondary-btn" class="btn btn-sec" style="width:100%;padding:.75rem;font-size:.9rem;display:none" onclick="BOS.welcomeSecondary()"></button>
+<button id="welcome-secondary-btn" class="btn btn-sec" style="width:100%;padding:.75rem;font-size:.9rem;display:none"></button>
 </div>
 <div style="background:#111;padding:1rem 2rem;border-top:1px solid #333">
 <p style="color:#555;font-size:.75rem;margin:0">
@@ -468,7 +468,7 @@ localStorage.setItem('bib-device-id',this.deviceId);
 }
 this.currentVesselId=sessionStorage.getItem('bib-current-vessel');
 // Seed HWM from registry if not yet set (upgrade path for existing users)
-const isWeb=window.location.protocol==='https:'||window.location.protocol==='http:';
+const isWeb=(window.location.hostname.endsWith('.github.io')||window.location.hostname==='mindful-consumer.github.io');
 if(isWeb&&!localStorage.getItem('bib-web-hwm')){
 const existing=this.getRegistry().length;
 if(existing>0)localStorage.setItem('bib-web-hwm',String(existing));
@@ -484,7 +484,7 @@ return r?JSON.parse(r):[];
 static getWebHWM(){
 // High-water mark: total vessels ever commissioned on public vessel.
 // Never decremented by deletion. Sovereign vessels always return 0.
-const isWeb=window.location.protocol==='https:'||window.location.protocol==='http:';
+const isWeb=(window.location.hostname.endsWith('.github.io')||window.location.hostname==='mindful-consumer.github.io');
 if(!isWeb)return 0;
 return parseInt(localStorage.getItem('bib-web-hwm')||'0');
 }
@@ -507,7 +507,7 @@ lastAccessed:new Date().toISOString()
 this.saveRegistry(registry);
 // Permanent high-water mark — counts every vessel ever commissioned on this
 // public context. Deletion never decrements it. Sovereign vessels ignore it.
-const isWeb=window.location.protocol==='https:'||window.location.protocol==='http:';
+const isWeb=(window.location.hostname.endsWith('.github.io')||window.location.hostname==='mindful-consumer.github.io');
 if(isWeb){
 const hwm=parseInt(localStorage.getItem('bib-web-hwm')||'0')+1;
 localStorage.setItem('bib-web-hwm',String(hwm));
@@ -569,6 +569,10 @@ localStorage.removeItem(key);
 if(this.currentVesselId===vesselId){
 sessionStorage.removeItem('bib-current-vessel');
 this.currentVesselId=null;
+}
+// Full wipe: if no vessels remain, reset the public HWM so a fresh start is possible
+if(registry.length===0){
+localStorage.removeItem('bib-web-hwm');
 }
 }
 
@@ -883,7 +887,7 @@ document.querySelectorAll('#slide-vessel-kb').forEach(el=>el.textContent=this.ve
 const _sbt=document.getElementById('sovereign-banner-text');
 const _sbs=document.getElementById('sovereign-banner-status');
 const _sba=document.getElementById('banner-anchor');
-const _isWeb=window.location.protocol==='https:'||window.location.protocol==='http:';
+const _isWeb=(window.location.hostname.endsWith('.github.io')||window.location.hostname==='mindful-consumer.github.io');
 const _isOnline=navigator.onLine;
 if(_sbt)_sbt.textContent='You are using Business in a Box v'+this.v+' — your data stays on this device.';
 if(_sbs)_sbs.textContent=_isWeb?('🌐 '+window.location.hostname):(_isOnline?'🟢 Sovereign · Online':'⚫ Sovereign · Offline');
@@ -944,7 +948,7 @@ setInterval(()=>this.updMetrics(),5000);
 // ── Public vessel detection ───────────────────────────────────────────
 // When running on http/https we are the public vessel at bibbos.com
 // Show the sovereignty banner and adapt the download button text
-const isWeb=window.location.protocol==='https:'||window.location.protocol==='http:';
+const isWeb=(window.location.hostname.endsWith('.github.io')||window.location.hostname==='mindful-consumer.github.io');
 if(isWeb){
 const banner=document.getElementById('public-banner');
 if(banner)banner.classList.add('show');
@@ -1030,7 +1034,7 @@ this.showWelcome();
 static createNewVessel(){
 // Public vessel cap: 3 businesses by sovereign design
 const registry=VesselManager.getRegistry();
-const isWeb=window.location.protocol==='https:'||window.location.protocol==='http:';
+const isWeb=(window.location.hostname.endsWith('.github.io')||window.location.hostname==='mindful-consumer.github.io');
 if(isWeb&&VesselManager.getWebHWM()>=3){
 this.alert('Your public fleet is full (3 vessels).\n\nThe sovereign vessel is a gift — download it once and run an unlimited fleet on any device, forever.\n\nUse the ⬇️ Download button to take full ownership.');
 return;
@@ -1549,6 +1553,9 @@ document.getElementById('biz-name').textContent=this.cfg.name;
 const anchorEl=document.querySelector('.bar-id .sovereign-anchor');
 if(anchorEl)anchorEl.textContent=this.cfg.icon||'⚓';
 document.getElementById('wizard').classList.remove('show');
+// Return to card surface — close any open panel from previous context
+document.getElementById('exp').classList.remove('show');
+this.cur=null;
 this.log('success','⚓ Vessel Commissioned: '+this.cfg.name+' ('+loc.n+')');
 this.log('success','Sovereignty Score: 90/100 — Offline-ready. Data local. Zero cloud dependency.');
 this.log('info','Structure: '+this.cfg.structure+' | Industry: '+(this.cfg.industry||'Not specified'));
@@ -3662,7 +3669,7 @@ document.getElementById('contribution-modal').classList.remove('show');
 static showWelcome(){
 const registry=VesselManager.getRegistry();
 const hasVessels=registry.length>0;
-const isWeb=window.location.protocol==='https:'||window.location.protocol==='http:';
+const isWeb=(window.location.hostname.endsWith('.github.io')||window.location.hostname==='mindful-consumer.github.io');
 const isMigrating=window._BiB_bootstrap&&!window._BiB_bootstrap.migrated;
 
 const title=document.getElementById('welcome-title');
@@ -3708,9 +3715,9 @@ const atWebCap=isWeb&&webHWM>=webCap;
 const display=[...registry].sort((a,b)=>new Date(b.lastAccessed)-new Date(a.lastAccessed));
 title.textContent='Welcome Back, Captain';
 if(atWebCap){
-subtitle.textContent='Your public fleet is full ('+registry.length+' vessels). Download your sovereign vessel for an unlimited fleet — it\'s a gift.';
+subtitle.textContent='Your public fleet is full ('+webCap+' vessel limit reached). Download your sovereign vessel for an unlimited fleet — it\'s a gift.';
 }else{
-subtitle.textContent='You have '+registry.length+' vessel'+(registry.length>1?'s':'')+' in your fleet. Select one to board'+(isWeb?' — or download for unlimited vessels.':' or commission a new one.');
+subtitle.textContent=(registry.length===1?'1 vessel in your fleet.':''+registry.length+' vessels in your fleet.')+(isWeb?' Select one to board — or download for your unlimited sovereign fleet.':' Select one to board or commission a new one.');
 }
 const scrollStyle=display.length>4?'max-height:14rem;overflow-y:auto;scrollbar-width:thin;':'';
 let vhtml=`<div style="display:grid;gap:.5rem;margin-bottom:1rem;${scrollStyle}">`;
@@ -3754,7 +3761,10 @@ a.click();
 }else{
 secondaryBtn.textContent='➕ Commission New Vessel';
 secondaryBtn.style.display='block';
-secondaryBtn.onclick=null; // restore default (HTML onclick attr handles it)
+secondaryBtn.onclick=()=>{
+document.getElementById('welcome-modal').classList.remove('show');
+BOS.createNewVessel();
+};
 }
 }
 
@@ -11198,7 +11208,7 @@ h+='</div>';
 h+='</div>';
 
 // Self-Download Vessel Code
-const isWebCtx=window.location.protocol==='https:'||window.location.protocol==='http:';
+const isWebCtx=(window.location.hostname.endsWith('.github.io')||window.location.hostname==='mindful-consumer.github.io');
 h+='<div style="background:var(--card);padding:2rem;border-radius:var(--rad);box-shadow:var(--sh);margin-bottom:2rem">';
 h+='<h3 style="margin-bottom:.5rem">⚓ '+(isWebCtx?'Download Your Sovereign Vessel':'Distribute This Vessel')+'</h3>';
 h+='<p style="color:var(--txt2);margin-bottom:1.5rem;font-size:.9rem">'+(isWebCtx?'You are using the live public vessel at <strong>'+window.location.hostname+'</strong>. Download it — your data travels with it. Open the file offline and everything is there.':'The complete vessel — living HTML file — for redistribution, offline copies, USB deployment, or mesh network sharing.')+'</p>';
@@ -11550,7 +11560,7 @@ return new Blob([final],{type:'text/html'});
 
 // ── Fire download counter ping (fire-and-forget, never blocks) ───────────
 static _pingDownloadCounter(){
-const isWeb=window.location.protocol==='https:'||window.location.protocol==='http:';
+const isWeb=(window.location.hostname.endsWith('.github.io')||window.location.hostname==='mindful-consumer.github.io');
 if(!isWeb)return; // Only count downloads from the public vessel
 const endpoint=window.BIB_COUNTER_ENDPOINT||'/api/vessel-download';
 try{
@@ -11583,7 +11593,7 @@ URL.revokeObjectURL(url);
 this._pingDownloadCounter();
 this.log('success','Sovereign vessel downloaded: '+filename+' (data bridge embedded)');
 // Show confirmation — makes the click feel alive, not dead
-const isWeb=window.location.protocol==='https:'||window.location.protocol==='http:';
+const isWeb=(window.location.hostname.endsWith('.github.io')||window.location.hostname==='mindful-consumer.github.io');
 if(isWeb){
 setTimeout(()=>{
 this.alert('Vessel downloading...\n\nFile: '+filename+'\n\nOpen in any browser — your data is embedded and will restore automatically.\n\nThe sovereignty is yours.');
@@ -11593,7 +11603,7 @@ this.alert('Vessel downloading...\n\nFile: '+filename+'\n\nOpen in any browser �
 
 // ── Public entry point: show contribution modal first if on web ──────────
 static downloadVesselCode(){
-const isWeb=window.location.protocol==='https:'||window.location.protocol==='http:';
+const isWeb=(window.location.hostname.endsWith('.github.io')||window.location.hostname==='mindful-consumer.github.io');
 if(isWeb){
 // Show contribution modal on every download UNTIL steward has contributed
 // Once contribution confirmed → flag set → download immediately forever after
@@ -11919,7 +11929,7 @@ window.BIB_STRIPE_PRICE_IDS = {
 // On http/https: fetch the actual file bytes (exact size, no DOM inflation)
 // On file://: use outerHTML (browser may serialise slightly larger — acceptable)
 (function(){
-const isWeb=window.location.protocol==='https:'||window.location.protocol==='http:';
+const isWeb=(window.location.hostname.endsWith('.github.io')||window.location.hostname==='mindful-consumer.github.io');
 function doInit(src){window._BiB_source=src;BOS.init();}
 if(isWeb){
 fetch(window.location.href)
