@@ -476,13 +476,6 @@ const r=localStorage.getItem('bib-vessel-registry');
 return r?JSON.parse(r):[];
 }
 
-static getWebHWM(){
-// High-water mark: total vessels ever commissioned on public vessel.
-// Never decremented by deletion. Sovereign vessels always return 0.
-const isWeb=(window.location.hostname.endsWith('.github.io')||window.location.hostname==='mindful-consumer.github.io');
-if(!isWeb)return 0;
-return parseInt(localStorage.getItem('bib-web-hwm')||'0');
-}
 
 static saveRegistry(registry){
 localStorage.setItem('bib-vessel-registry',JSON.stringify(registry));
@@ -500,13 +493,6 @@ createdAt:new Date().toISOString(),
 lastAccessed:new Date().toISOString()
 });
 this.saveRegistry(registry);
-// Permanent high-water mark — counts every vessel ever commissioned on this
-// public context. Deletion never decrements it. Sovereign vessels ignore it.
-const isWeb=(window.location.hostname.endsWith('.github.io')||window.location.hostname==='mindful-consumer.github.io');
-if(isWeb){
-const hwm=parseInt(localStorage.getItem('bib-web-hwm')||'0')+1;
-localStorage.setItem('bib-web-hwm',String(hwm));
-}
 this.setCurrentVessel(vesselId);
 return vesselId;
 }
@@ -564,10 +550,6 @@ localStorage.removeItem(key);
 if(this.currentVesselId===vesselId){
 sessionStorage.removeItem('bib-current-vessel');
 this.currentVesselId=null;
-}
-// Full wipe: if no vessels remain, reset the public HWM so a fresh start is possible
-if(registry.length===0){
-localStorage.removeItem('bib-web-hwm');
 }
 }
 
@@ -1030,7 +1012,7 @@ static createNewVessel(){
 // Public vessel cap: 3 businesses by sovereign design
 const registry=VesselManager.getRegistry();
 const isWeb=(window.location.hostname.endsWith('.github.io')||window.location.hostname==='mindful-consumer.github.io');
-if(isWeb&&VesselManager.getWebHWM()>=3){
+if(isWeb&&VesselManager.getRegistry().length>=3){
 this.alert('Your public fleet is full (3 vessels).\n\nThe sovereign vessel is a gift — download it once and run an unlimited fleet on any device, forever.\n\nUse the ⬇️ Download button to take full ownership.');
 return;
 }
@@ -3703,9 +3685,8 @@ anchor.textContent=current.icon||'⚓';
 // Public vessel (isWeb) has a 3-vessel preview fleet — by sovereign design.
 // Sovereign vessel (file/LAN) is unlimited.
 const webCap=3;
-// Use permanent high-water mark — deletion cannot reset the cap
-const webHWM=VesselManager.getWebHWM();
-const atWebCap=isWeb&&webHWM>=webCap;
+// Cap on active fleet — deletion frees a slot
+const atWebCap=isWeb&&registry.length>=webCap;
 // Display: sovereign shows all; public shows all up to cap (they're all within 3)
 const display=[...registry].sort((a,b)=>new Date(b.lastAccessed)-new Date(a.lastAccessed));
 title.textContent='Welcome Back, Captain';
@@ -4284,6 +4265,7 @@ this._dirtyInit();
 
 static selectProfileIcon(icon){
 this.cfg.icon=icon;
+this._dirty=true; // belt-and-suspenders: .opt click also caught by _dirtyInit listener
 // Target the correct grid id — was 'prof-icon', actual id is 'prof-icon-grid'
 document.querySelectorAll('#prof-icon-grid .opt').forEach(el=>{
 el.classList.remove('sel');
@@ -8011,21 +7993,27 @@ setTimeout(()=>{
   this._dirtyOrigin = {};
   fields.forEach(f=>{ if(f.id) this._dirtyOrigin[f.id] = f.value; });
   this._dirty = false;
-  // Wire change listener
   const body = document.getElementById('exp-body');
   if(body){
+    // Wire field change listener
     body._dirtyHandler = (e) => {
       if(!this._dirtyOrigin) return;
       const el = e.target;
       if(!el.id) return;
       const orig = this._dirtyOrigin[el.id];
-      // Mark dirty if any field differs from baseline
       if(orig !== undefined && el.value !== orig) this._dirty = true;
     };
     body.removeEventListener('input', body._dirtyHandler);
     body.removeEventListener('change', body._dirtyHandler);
     body.addEventListener('input',  body._dirtyHandler);
     body.addEventListener('change', body._dirtyHandler);
+    // Wire click listener for .opt elements (icon pickers, option grids)
+    // Any click on a selectable option inside the form marks dirty
+    body._dirtyClickHandler = (e) => {
+      if(e.target.closest('.opt')) this._dirty = true;
+    };
+    body.removeEventListener('click', body._dirtyClickHandler);
+    body.addEventListener('click', body._dirtyClickHandler);
   }
 },80);
 }
