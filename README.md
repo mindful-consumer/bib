@@ -1,6 +1,6 @@
 # Business in a Box v6.0 — Sovereign Realware BOS
 
-**One 658 KB HTML file.**  
+**One 660 KB HTML file.**  
 **No server. No database. No subscription. No account. No permission required.**
 
 This is not software. This is **realware** — a complete, self-teaching, self-replicating Business Operating System compressed into a single eternal seed.
@@ -26,7 +26,7 @@ Built for the ones the enterprise stack left behind: micro-entrepreneurs in Trin
 
 **Size comparison (2026 reality)**  
 Traditional tools: 500 MB – 1.5 GB + $15–$200+/month  
-BiB v5.8: 658 KB — eternal, zero recurring cost, zero cloud dependency.
+BiB v5.8: 660 KB — eternal, zero recurring cost, zero cloud dependency.
 
 ### The Pattern: Compressed Intelligence at Planetary Scale
 
@@ -46,7 +46,7 @@ This is sovereignty that multiplies — without bloat, without extraction, witho
 1. Go to the live demo: https://mindful-consumer.github.io/bib/
 2. Click the download button (or save the page)  
 3. Open the file → Install as PWA (Add to home screen)  
-4. Start the 48-slide presentation — the vessel teaches itself  
+4. Start the 65-slide presentation — the vessel teaches itself  
 5. Commission your first vessel and begin
 
 Completely offline after first load. Works on any modern browser, any device.
