@@ -3619,7 +3619,9 @@ this.confirmCb=null;
 
 // Alert Dialog
 static alert(msg){
-document.getElementById('alert-msg').textContent=msg;
+const _am=document.getElementById('alert-msg');
+if(/<[a-z]/i.test(String(msg)))_am.innerHTML=msg;
+else _am.textContent=msg;
 document.getElementById('alert-modal').classList.add('show');
 document.getElementById('alert-backdrop').classList.add('show');
 }
