@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BiBBOS v6.1 — Business in a Box</title>
+<title>BiBBOS v6.2 — Business in a Box</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏢</text></svg>">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
@@ -513,7 +513,7 @@ vesselId:VesselManager.currentVesselId||('vessel_genesis_'+Date.now()),
 vesselName:cfg.name,
 commissionedAt:new Date().toISOString(),
 loc:cfg.loc||'',
-bibVersion:'5.1.0',
+bibVersion:'6.2.0',
 ancestryChain:parentChain,
 // Immutable fingerprint: hash of name+date for mesh identification
 fingerprint:btoa(encodeURIComponent((cfg.name||'')+new Date().toISOString().split('T')[0])).substring(0,16)
@@ -586,7 +586,7 @@ localStorage.setItem(VesselManager.currentVesselId+'_'+key,JSON.stringify(value)
 
 // BUSINESS OPERATING SYSTEM
 class BOS{
-static v='6.0';
+static v='6.2';
 static cfg={};static people=[];static prod=[];static inv=[];static po=[];static quotes=[];static recurring=[];static credits=[];
 static employees=[];static timesheets=[];static jobLogs=[];static encounters=[];static payrollRuns=[];static punches=[];
 static deliveries=[];static campaigns=[];static touchpoints=[];
@@ -2341,7 +2341,7 @@ const payBtn=payLink?`<a href="${payLink}" target="_blank" rel="noopener" class=
 const canDeliver=(i.status==='paid'||i.status==='sent');
 const hasDelivery=this.deliveries.find(d=>d.invId===i.id);
 const deliverBtn=canDeliver?`<button class="btn btn-sec" onclick="BOS.createDelivery(${i.id})" title="${hasDelivery?'View delivery':'Create delivery order'}" style="${hasDelivery?'border-color:var(--succ);color:var(--succ)':''}">🚚${hasDelivery?' ✓':''}</button>`:'';
-h+=`<div class="row inv-row" style="grid-template-columns:1fr 2fr 1fr 1fr 1fr 1fr" data-num="${(i.num||'').toLowerCase()}" data-cust="${(i.custName||'').toLowerCase()}" data-status="${i.status}"><div>${i.num}</div><div>${i.custName}</div><div>${i.date}</div><div>${sym}${this.fmt(i.total)}${secDisplay}</div><div><span class="status ${i.status}">${i.status}</span></div><div style="display:flex;gap:.4rem;flex-wrap:wrap">${editBtn}${payBtn}${deliverBtn}<button class="btn btn-sec" onclick="BOS.chgStatus(${i.id})">Status</button><button class="btn" onclick="BOS.pdf(${i.id},'inv')">PDF</button>${delBtn}</div></div>`;
+h+=`<div class="row inv-row" style="grid-template-columns:1fr 2fr 1fr 1fr 1fr 1fr" data-num="${(i.num||'').toLowerCase()}" data-cust="${(i.custName||'').toLowerCase()}" data-status="${i.status}"><div>${i.num}</div><div>${i.custName}</div><div>${i.date}</div><div>${sym}${this.fmt(i.total)}${secDisplay}</div><div><span class="status ${i.status}">${i.status}</span></div><div style="display:flex;gap:.4rem;flex-wrap:wrap">${editBtn}${payBtn}${deliverBtn}<button class="btn btn-sec" onclick="BOS.chgStatus(${i.id})">Status</button><button class="btn" onclick="BOS.pdf(${i.id},'inv')">PDF</button><button class="btn btn-sec" onclick="BOS.v2vSend(${i.id})" title="Send to another vessel">🤝</button>${delBtn}</div></div>`;
 });
 h+='</div>';
 }
@@ -11328,6 +11328,41 @@ h+='<p style="color:var(--txt2);font-size:.875rem;margin-bottom:1rem">Erases eve
 h+='<button class="btn btn-dang" onclick="BOS.confirmWipeAll()">💣 Wipe Everything</button>';
 h+='</div>';
 
+// ── V2V — Vessel-to-Vessel Exchange ────────────────────────────────────────
+h+='<div style="background:var(--card);padding:2rem;border-radius:var(--rad);box-shadow:var(--sh);margin-bottom:2rem">';
+h+='<h3 style="margin-bottom:.5rem">🤝 Vessel-to-Vessel (V2V)</h3>';
+h+='<p style="color:var(--txt2);margin-bottom:1.5rem;font-size:.875rem">Exchange invoices directly with other BiB vessels — no server, no intermediary. Three channels: file, QR code, or LAN broadcast.</p>';
+h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;margin-bottom:1.25rem">';
+// Receive file
+h+='<div style="background:var(--bg);border-radius:8px;padding:1.25rem;text-align:center">';
+h+='<div style="font-size:2rem;margin-bottom:.5rem">📥</div>';
+h+='<div style="font-weight:600;margin-bottom:.25rem;font-size:.9rem">Receive File</div>';
+h+='<div style="font-size:.75rem;color:var(--txt2);margin-bottom:.75rem">Import a .bib-inv.json file</div>';
+h+='<label class="btn btn-sec" style="cursor:pointer;font-size:.85rem">📂 Select File<input type="file" accept=".json" style="display:none" onchange="BOS.v2vReceiveFile(this.files[0])"></label>';
+h+='</div>';
+// Scan QR
+h+='<div style="background:var(--bg);border-radius:8px;padding:1.25rem;text-align:center">';
+h+='<div style="font-size:2rem;margin-bottom:.5rem">📷</div>';
+h+='<div style="font-weight:600;margin-bottom:.25rem;font-size:.9rem">Scan QR</div>';
+h+='<div style="font-size:.75rem;color:var(--txt2);margin-bottom:.75rem">Scan a V2V QR from sender</div>';
+h+='<button class="btn btn-sec" style="font-size:.85rem" onclick="BOS.v2vReceiveQR()">📷 Open Camera</button>';
+h+='</div>';
+// LAN listen
+const lanActive=!!BOS._v2vChannel;
+h+='<div style="background:var(--bg);border-radius:8px;padding:1.25rem;text-align:center">';
+h+='<div style="font-size:2rem;margin-bottom:.5rem">'+(lanActive?'📡':'📡')+'</div>';
+h+='<div style="font-weight:600;margin-bottom:.25rem;font-size:.9rem">LAN Listen</div>';
+h+='<div style="font-size:.75rem;color:var(--txt2);margin-bottom:.75rem">'+(lanActive?'<span style="color:var(--succ)">● Active — listening for broadcasts</span>':'Receive LAN broadcasts')+'</div>';
+h+='<button class="btn '+(lanActive?'btn-dang':'btn-sec')+'" style="font-size:.85rem" onclick="BOS.v2vListenLAN()">'+(lanActive?'⏹ Stop':'▶ Start Listening')+'</button>';
+h+='</div>';
+h+='</div>';
+h+='<div style="background:var(--bg);border-radius:8px;padding:1rem;font-size:.8rem;color:var(--txt2)">';
+h+='<strong style="color:var(--txt)">How it works:</strong> Sender clicks 🤝 on any invoice → chooses File, QR, or Broadcast. ';
+h+='Receiver imports here → invoice auto-creates a Purchase Order with the sender as vendor. ';
+h+='Sender vessel DNA is preserved in the PO for lineage tracking.';
+h+='</div>';
+h+='</div>';
+
 h+='</div>';
 h+='</div>';
 
@@ -11711,6 +11746,269 @@ this.log('error','Import failed: '+err.message);
 reader.readAsText(file);
 }
 
+// ══════════════════════════════════════════════════════════════
+// V2V — VESSEL-TO-VESSEL PROTOCOL v1
+// Sovereign inter-vessel invoice exchange.
+// Three channels: File, QR Code, LAN (BroadcastChannel)
+// Same receive/parse/accept function for all three channels.
+// ══════════════════════════════════════════════════════════════
+
+static _v2vBuildPacket(inv){
+// Build a signed V2V invoice packet from a local invoice
+const genesis=this.cfg.vesselGenesis||{};
+return {
+bibDNA:true,
+protocol:'v2v-inv-1',
+sentAt:new Date().toISOString(),
+sender:{
+vesselId:genesis.vesselId||VesselManager.currentVesselId,
+name:this.cfg.name||'Unknown Vessel',
+loc:this.cfg.loc||'',
+cur:this.cfg.cur||'USD',
+sym:this.cfg.sym||'$',
+fingerprint:genesis.fingerprint||''
+},
+invoice:inv
+};
+}
+
+static v2vSend(invId){
+const inv=this.inv.find(x=>x.id===invId);
+if(!inv){this.log('warning','Invoice not found');return;}
+const packet=this._v2vBuildPacket(inv);
+const json=JSON.stringify(packet,null,2);
+const sym=this.cfg.sym||'$';
+const lang=this.cfg.lang||'EN';
+// Build send modal
+let h=`<div style="text-align:center;padding:.5rem 0">
+<div style="font-size:2.5rem;margin-bottom:.75rem">🤝</div>
+<h4 style="margin-bottom:.5rem">Send to Another Vessel</h4>
+<p style="color:var(--txt2);font-size:.875rem;margin-bottom:1.5rem">
+${inv.num} · ${sym}${this.fmt(inv.total)} · ${inv.custName||''}
+</p></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.25rem">
+<div style="background:var(--bg);border-radius:8px;padding:1.25rem;text-align:center">
+<div style="font-size:2rem;margin-bottom:.5rem">📄</div>
+<div style="font-weight:600;margin-bottom:.375rem">Export File</div>
+<div style="font-size:.8rem;color:var(--txt2);margin-bottom:1rem">Share via WhatsApp, email, USB, AirDrop</div>
+<button class="btn" onclick="BOS._v2vExportFile(${invId})">⬇️ Download .bib-inv</button>
+</div>
+<div style="background:var(--bg);border-radius:8px;padding:1.25rem;text-align:center">
+<div style="font-size:2rem;margin-bottom:.5rem">📱</div>
+<div style="font-weight:600;margin-bottom:.375rem">QR Code</div>
+<div style="font-size:.8rem;color:var(--txt2);margin-bottom:1rem">Receiver scans with their device camera</div>
+<button class="btn" onclick="BOS._v2vShowQR(${invId})">📱 Show QR</button>
+</div></div>
+<div style="background:var(--bg);border-radius:8px;padding:1.25rem;margin-bottom:.5rem">
+<div style="display:flex;align-items:center;gap:.75rem">
+<div style="font-size:1.5rem">📡</div>
+<div>
+<div style="font-weight:600;font-size:.9rem">Broadcast on LAN</div>
+<div style="font-size:.8rem;color:var(--txt2)">Push to all vessels listening on this network</div>
+</div>
+<button class="btn btn-sec" style="margin-left:auto" onclick="BOS._v2vBroadcast(${invId})">📡 Broadcast</button>
+</div></div>`;
+this.alert(h);
+}
+
+static _v2vExportFile(invId){
+const inv=this.inv.find(x=>x.id===invId);
+if(!inv)return;
+const packet=this._v2vBuildPacket(inv);
+const json=JSON.stringify(packet,null,2);
+const blob=new Blob([json],{type:'application/json'});
+const url=URL.createObjectURL(blob);
+const a=document.createElement('a');
+a.href=url;
+const safe=(this.cfg.name||'vessel').replace(/[^a-z0-9]/gi,'-').toLowerCase();
+a.download=`${safe}-${inv.num}-v2v.bib-inv.json`;
+a.click();
+URL.revokeObjectURL(url);
+this.log('success','V2V packet exported: '+a.download);
+document.getElementById('alert-modal').classList.remove('show');
+setTimeout(()=>this.alert('✅ V2V invoice file ready\n\nFile: '+a.download+'\n\nShare this file with the receiving vessel captain.\nThey import it via Maint → V2V Receive.'),300);
+}
+
+static _v2vShowQR(invId){
+const inv=this.inv.find(x=>x.id===invId);
+if(!inv)return;
+const packet=this._v2vBuildPacket(inv);
+const json=JSON.stringify(packet);
+// QR codes have practical data limits — for large invoices use compact form
+const compact={bibDNA:true,protocol:'v2v-inv-1',sentAt:packet.sentAt,
+sender:packet.sender,
+invoice:{id:inv.id,num:inv.num,custName:inv.custName,date:inv.date,
+items:inv.items,sub:inv.sub,tax:inv.tax,taxRate:inv.taxRate,
+total:inv.total,cur:inv.cur,sym:inv.sym,status:inv.status}};
+const compactJson=JSON.stringify(compact);
+const canvas=document.createElement('canvas');
+canvas.width=300;canvas.height=300;
+const qrData=this._qrGenerate(compactJson);
+if(!qrData){
+document.getElementById('alert-modal').classList.remove('show');
+setTimeout(()=>this.alert('⚠️ Invoice too large for QR code.\n\nUse the file export option instead.'),300);
+return;
+}
+const ctx=canvas.getContext('2d');
+const size=qrData.length;
+const cellSize=Math.floor(280/size);
+const offset=Math.floor((300-size*cellSize)/2);
+ctx.fillStyle='#FFFFFF';ctx.fillRect(0,0,300,300);
+ctx.fillStyle='#000000';
+qrData.forEach((row,r)=>row.forEach((cell,col)=>{
+if(cell)ctx.fillRect(offset+col*cellSize,offset+r*cellSize,cellSize,cellSize);
+}));
+const dataUrl=canvas.toDataURL();
+document.getElementById('alert-modal').classList.remove('show');
+setTimeout(()=>{
+let h=`<div style="text-align:center;padding:.5rem 0">
+<div style="font-size:1.5rem;margin-bottom:.5rem">📱 Scan to Receive Invoice</div>
+<p style="color:var(--txt2);font-size:.8rem;margin-bottom:1rem">${inv.num} · ${inv.sym||'$'}${this.fmt(inv.total)}</p>
+<img src="${dataUrl}" style="width:250px;height:250px;border:4px solid var(--bord);border-radius:8px;image-rendering:pixelated" alt="V2V QR Code">
+<p style="font-size:.75rem;color:var(--txt2);margin-top:.75rem">Receiver: Maint → V2V Receive → Scan QR</p>
+</div>`;
+this.alert(h);
+},300);
+}
+
+static _v2vBroadcast(invId){
+const inv=this.inv.find(x=>x.id===invId);
+if(!inv)return;
+const packet=this._v2vBuildPacket(inv);
+try{
+const bc=new BroadcastChannel('bib-v2v');
+bc.postMessage(packet);
+bc.close();
+this.log('success','V2V broadcast sent: '+inv.num);
+document.getElementById('alert-modal').classList.remove('show');
+setTimeout(()=>this.alert('📡 Broadcast sent!\n\n'+inv.num+' broadcast on the local channel.\n\nAny vessel with V2V Receive active on this network will receive it.'),300);
+}catch(e){
+document.getElementById('alert-modal').classList.remove('show');
+setTimeout(()=>this.alert('⚠️ Broadcast not available in this browser.\n\nUse file export or QR code instead.'),300);
+}
+}
+
+static v2vReceiveFile(file){
+if(!file)return;
+const reader=new FileReader();
+reader.onload=(e)=>{
+try{
+const packet=JSON.parse(e.target.result);
+this._v2vProcess(packet);
+}catch(err){
+this.alert('⚠️ Invalid V2V file.\n\nPlease select a valid .bib-inv.json file.');
+this.log('error','V2V receive failed: '+err.message);
+}
+};
+reader.readAsText(file);
+}
+
+static v2vReceiveQR(){
+// V2V QR receive — paste JSON from QR scanner app
+// The QR shown by the sender can be read by any QR app, then pasted here.
+// Native camera scanning requires a dedicated scanner module (v6.3+).
+const ta=document.createElement('textarea');
+ta.style.cssText='width:100%;height:120px;background:var(--bg);color:var(--txt);border:1px solid var(--bord);border-radius:6px;padding:.5rem;font-size:.8rem;font-family:monospace;margin-top:.75rem';
+ta.placeholder='Paste the V2V JSON here (from your QR scanner app)...';
+const wrap=document.createElement('div');
+wrap.innerHTML='<div style="text-align:center;margin-bottom:.75rem"><div style="font-size:2rem">📷</div><div style="font-weight:600;margin-bottom:.25rem">QR Receive</div><div style="font-size:.8rem;color:var(--txt2)">Scan the sender&#39;s QR code with any QR app, then paste the result below.</div></div>';
+wrap.appendChild(ta);
+this.confirm(wrap,()=>{
+const raw=ta.value.trim();
+if(!raw){this.alert('⚠️ No data pasted.');return;}
+try{
+const packet=JSON.parse(raw);
+this._v2vProcess(packet);
+}catch(e){
+this.alert('⚠️ Could not parse QR data as V2V packet.\n\nEnsure you pasted the full JSON text from the QR scanner.');
+}
+},'📥 Process');
+}
+
+static v2vListenLAN(){
+if(this._v2vChannel){
+this._v2vChannel.close();
+this._v2vChannel=null;
+this.log('info','V2V LAN listener stopped');
+this.rMaint();
+return;
+}
+try{
+this._v2vChannel=new BroadcastChannel('bib-v2v');
+this._v2vChannel.onmessage=(e)=>{
+this.log('info','V2V broadcast received');
+this._v2vProcess(e.data);
+};
+this.log('success','📡 V2V LAN listener active — waiting for broadcasts...');
+this.rMaint(); // refresh to show active state
+}catch(e){
+this.alert('⚠️ LAN broadcast not supported in this browser.');
+}
+}
+
+static _v2vProcess(packet){
+// Validate
+if(!packet||packet.bibDNA!==true||!packet.protocol?.startsWith('v2v-inv')){
+this.alert('⚠️ This file is not a valid V2V invoice packet.\n\nExpected a .bib-inv.json file from another BiB vessel.');
+return;
+}
+const inv=packet.invoice;
+const sender=packet.sender||{};
+const sym=inv.sym||sender.sym||'$';
+// Preview modal
+let itemList=(inv.items||[]).map(x=>`<div style="display:flex;justify-content:space-between;padding:.25rem 0;border-bottom:1px solid var(--bord);font-size:.85rem"><span>${x.desc||x.name||'Item'}</span><span>${sym}${this.fmt(x.total||x.amount||0)}</span></div>`).join('');
+const h=`<div>
+<div style="display:flex;align-items:center;gap:.75rem;margin-bottom:1.25rem">
+<div style="font-size:2rem">🤝</div>
+<div><div style="font-weight:700;font-size:1.1rem">${inv.num||'Invoice'}</div>
+<div style="font-size:.8rem;color:var(--txt2)">From: ${sender.name||'Unknown Vessel'} · ${sender.loc||''}</div></div>
+<div style="margin-left:auto;text-align:right">
+<div style="font-size:1.25rem;font-weight:700">${sym}${this.fmt(inv.total||0)}</div>
+<div style="font-size:.75rem;color:var(--txt2)">${inv.date||''}</div></div></div>
+<div style="background:var(--bg);border-radius:8px;padding:1rem;margin-bottom:1rem">${itemList}
+<div style="display:flex;justify-content:space-between;padding:.5rem 0 0;font-weight:600">
+<span>Total</span><span>${sym}${this.fmt(inv.total||0)}</span></div></div>
+<p style="font-size:.8rem;color:var(--txt2)">Accept this invoice as a Purchase Order in your vessel?<br>The sender will be added as a vendor if not already in your records.</p>
+</div>`;
+this.confirm(h,()=>this._v2vAccept(packet),'✅ Accept as PO');
+}
+
+static _v2vAccept(packet){
+const inv=packet.invoice;
+const sender=packet.sender||{};
+// Ensure sender exists as a vendor in people
+let vendor=this.people.find(p=>p.type==='vendor'&&
+(p.v2vVesselId===sender.vesselId||p.name===sender.name));
+if(!vendor){
+vendor={id:Date.now(),name:sender.name||'V2V Vendor',
+type:'vendor',email:'',phone:'',address:'',
+v2vVesselId:sender.vesselId||'',
+v2vFingerprint:sender.fingerprint||'',
+v2vLoc:sender.loc||'',notes:'Auto-created from V2V invoice '+inv.num};
+this.people.push(vendor);
+this.log('info','V2V vendor created: '+vendor.name);
+}
+// Create PO from invoice
+const items=(inv.items||[]).map(x=>({
+desc:x.desc||x.name||'Item',qty:x.qty||1,
+price:x.price||x.amount||x.total||0,
+total:(x.qty||1)*(x.price||x.amount||x.total||0)}));
+const tot=items.reduce((s,x)=>s+x.total,0);
+const po={id:Date.now()+1,num:'PO-'+this.nxt.po++,
+vid:vendor.id,vendName:vendor.name,
+date:inv.date||new Date().toISOString().split('T')[0],
+items,total:tot,cur:inv.cur||this.cfg.cur,
+sym:inv.sym||this.cfg.sym,status:'draft',
+v2vRef:inv.num,v2vSenderVesselId:sender.vesselId||'',
+notes:'V2V import from '+sender.name+' ('+sender.loc+') · '+packet.sentAt};
+this.po.push(po);
+this.save();
+this.log('success','✅ V2V invoice accepted: '+inv.num+' → '+po.num);
+this.updCards();
+this.rPO();
+setTimeout(()=>this.alert('✅ V2V Invoice Accepted\n\n'+inv.num+' → '+po.num+'\n\nPurchase Order created.\nVendor: '+vendor.name+'\nTotal: '+(inv.sym||'$')+this.fmt(tot)),300);
+}
+
 static checkOrphans(){
 let orphans={invoicesWithoutCustomers:0,posWithoutVendors:0,itemsWithoutProducts:0,totalOrphans:0};
 // Check invoices for deleted customers
@@ -11974,7 +12272,7 @@ if((e.ctrlKey||e.metaKey)&&e.key==='l'){e.preventDefault();BOS.toggleLog();}
 });
 document.addEventListener('click',e=>{if(!e.target.closest('.bar-acts'))document.getElementById('theme-menu').classList.remove('show');});
 
-console.log('%c🏢 BiBBOS v6.0 — Business in a Box','font-size:20px;font-weight:bold;color:#E95420');
+console.log('%c🏢 BiBBOS v6.2 — Business in a Box','font-size:20px;font-weight:bold;color:#E95420');
 console.log('%cMulti-Vessel · Sovereign Lineage · v'+BOS.v,'font-style:italic;color:#77216F');
 console.log('%c"The vessel is complete. The knowledge is embedded. The sovereignty is yours."','font-style:italic;color:#2E7D32');
 </script>
