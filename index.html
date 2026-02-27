@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BiBBOS v6.0 — Business in a Box</title>
+<title>BiBBOS v6.1 — Business in a Box</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏢</text></svg>">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
@@ -1310,7 +1310,7 @@ EN:'Where are you based?',NL:'Waar bent u gevestigd?',ES:'¿Dónde está ubicado
 }[this.cfg.lang||'EN']||'Where are you based?';
 const _other={EN:'Other',NL:'Anders',ES:'Otro',FR:'Autre',HI:'अन्य'}[this.cfg.lang||'EN']||'Other';
 e.innerHTML='<div style="font-size:1.125rem;font-weight:600;margin-bottom:1.5rem">'+_loc+'</div><div>'+
-['🇹🇹 Trinidad & Tobago|TT','🇸🇷 Suriname|SR','🇧🇧 Barbados|BB','🇺🇸 United States|US',`🌍 ${_other}|OT`].map(x=>{
+['🇹🇹 Trinidad & Tobago|TT','🇸🇷 Suriname|SR','🇧🇧 Barbados|BB','🇬🇾 Guyana|GY','🇯🇲 Jamaica|JM','🇱🇨 Saint Lucia|LC','🇺🇸 United States|US',`🌍 ${_other}|OT`].map(x=>{
 const[l,v]=x.split('|');
 return`<div class="opt" onclick="BOS.wizSel(this,'loc','${v}')">${l}</div>`;
 }).join('')+'</div>';
@@ -1333,8 +1333,10 @@ _industries.map((ind,idx)=>
 '</div>';
 n.disabled=false;
 }else{
-const loc={TT:{n:'Trinidad & Tobago',c:'TTD',s:'TT$',t:12.5},SR:{n:'Suriname',c:'SRD',s:'Sr$',t:0},
-BB:{n:'Barbados',c:'BBD',s:'Bds$',t:17.5},US:{n:'United States',c:'USD',s:'$',t:0},
+const loc={TT:{n:'Trinidad & Tobago',c:'TTD',s:'TT$',t:12.5},SR:{n:'Suriname',c:'SRD',s:'Sr$',t:10},
+BB:{n:'Barbados',c:'BBD',s:'Bds$',t:17.5},GY:{n:'Guyana',c:'GYD',s:'G$',t:14},
+JM:{n:'Jamaica',c:'JMD',s:'J$',t:15},LC:{n:'Saint Lucia',c:'XCD',s:'EC$',t:12.5},
+US:{n:'United States',c:'USD',s:'$',t:0},
 OT:{n:this.t('wizard.step3')==='Locatie'?'Wereldwijd':this.t('wizard.step3')==='Ubicación'?'Global':this.t('wizard.step3')==='Localisation'?'Mondial':'Global',c:'USD',s:'$',t:0}}[this.wizD.loc];
 const structureMap={
 EN:{sole:'Sole Proprietorship',partnership:'Partnership',llc:'LLC',corp:'Corporation',other:'Other'},
@@ -1405,8 +1407,21 @@ if(k==='structure'||k==='type'){
 const nameInput=document.getElementById('wiz-name');
 document.getElementById('wiz-next').disabled=!nameInput||!nameInput.value||!this.wizD.structure||!this.wizD.type;
 }else if(k==='loc'||k==='industry'){
-// Stay on same step — selection is visually confirmed, Next is now active
 document.getElementById('wiz-next').disabled=false;
+// Auto-suggest language based on location (soft suggestion — captain can override)
+if(k==='loc'){
+const locLang={SR:'NL',GY:'EN',JM:'EN',LC:'EN',TT:'EN',BB:'EN',US:'EN',OT:'EN'};
+const suggestedLang=locLang[v]||'EN';
+if(!this.wizD.lang||this.wizD.lang==='EN'){
+// Only auto-set if not already consciously chosen
+this.wizD.lang=suggestedLang;
+this.cfg.lang=suggestedLang;
+// Visually activate the right language opt if visible
+document.querySelectorAll('#wiz-content .opt[onclick*="selectLanguage"]').forEach(el=>{
+el.classList.toggle('sel',el.getAttribute('onclick').includes("'"+suggestedLang+"'"));
+});
+}
+}
 }else{
 this.wizRender();
 }
@@ -1495,8 +1510,10 @@ if(!this.wizD.name||!this.wizD.structure||!this.wizD.type)return;
 this.wiz++;this.wizRender();
 }else if(this.wiz<3){this.wiz++;this.wizRender();}
 else{
-const loc={TT:{n:'Trinidad & Tobago',c:'TTD',s:'TT$',t:12.5},SR:{n:'Suriname',c:'SRD',s:'Sr$',t:0},
-BB:{n:'Barbados',c:'BBD',s:'Bds$',t:17.5},US:{n:'United States',c:'USD',s:'$',t:0},
+const loc={TT:{n:'Trinidad & Tobago',c:'TTD',s:'TT$',t:12.5},SR:{n:'Suriname',c:'SRD',s:'Sr$',t:10},
+BB:{n:'Barbados',c:'BBD',s:'Bds$',t:17.5},GY:{n:'Guyana',c:'GYD',s:'G$',t:14},
+JM:{n:'Jamaica',c:'JMD',s:'J$',t:15},LC:{n:'Saint Lucia',c:'XCD',s:'EC$',t:12.5},
+US:{n:'United States',c:'USD',s:'$',t:0},
 OT:{n:'Global',c:'USD',s:'$',t:0}}[this.wizD.loc];
 
 // Register vessel with icon
@@ -4013,7 +4030,7 @@ this.cfg.state=document.getElementById('prof-state').value;
 this.cfg.postalCode=document.getElementById('prof-postal').value;
 this.cfg.country=document.getElementById('prof-country').value;
 this.cfg.cur=document.getElementById('prof-currency').value;
-this.cfg.sym={TTD:'TT$',SRD:'Sr$',BBD:'Bds$',USD:'$',CAD:'C$',GBP:'£',EUR:'€'}[this.cfg.cur]||'$';
+this.cfg.sym={TTD:'TT$',SRD:'Sr$',BBD:'Bds$',GYD:'G$',JMD:'J$',XCD:'EC$',USD:'$',CAD:'C$',GBP:'£',EUR:'€'}[this.cfg.cur]||'$';
 this.cfg.fiscalYearEnd=document.getElementById('prof-fiscalyear').value;
 this.cfg.accountingMethod=document.getElementById('prof-accmethod').value;
 this.cfg.taxRates=taxRates;
@@ -8774,17 +8791,31 @@ this._dirtyInit();
 
 static _getStatutoryRatesDisplay(){
 const loc=this.cfg.loc||'TT';
-if(loc==='TT')return'NIS Employee: 3.15% · NIS Employer: 5.6% · Health Surcharge: $8.25/week · PAYE: progressive (0–25–30%)';
-if(loc==='BB')return'NIS Employee: 9.75% · NIS Employer: 10.5% · PAYE: progressive';
-if(loc==='SR')return'Configured per contract. Enter deductions manually.';
+if(loc==='TT')return'NIS Employee: 3.15% · NIS Employer: 5.6% · Health Surcharge: TT$8.25/wk · PAYE: progressive (0–25–30%)';
+if(loc==='BB')return'NIS Employee: 9.75% · NIS Employer: 10.5% · PAYE: 25% above BBD 25,000';
+if(loc==='SR')return'AOV/AWW Employee: 2.5% · Employer: 5% · Loonbelasting: progressive 8–38% above SRD 18,000';
+if(loc==='GY')return'NIS Employee: 5.6% · NIS Employer: 8.4% · PAYE: 28% above GYD 780,000';
+if(loc==='JM')return'NIS Employee: 3% · NHT Employee: 2% · Ed Tax Employee: 2.25% · PAYE: 25–30% above J$ 1,500,096';
+if(loc==='LC')return'NIS Employee: 5% · NIS Employer: 5% · PAYE: progressive 10–30% above XCD 18,000';
 return'Configure statutory deductions for your jurisdiction.';
 }
 
 static _getStatutoryRates(){
 const loc=this.cfg.loc||'TT';
-if(loc==='TT')return{nisEmp:0.0315,nisEmpR:0.056,healthSurcharge:8.25,payeThresh:84000};
-if(loc==='BB')return{nisEmp:0.0975,nisEmpR:0.105,healthSurcharge:0,payeThresh:25000};
-return{nisEmp:0.04,nisEmpR:0.06,healthSurcharge:0,payeThresh:50000};
+// Trinidad & Tobago: NIS 3.15%/5.6%, HS TT$8.25/wk, PAYE free @84,000
+if(loc==='TT')return{nisEmp:0.0315,nisEmpR:0.056,healthSurcharge:8.25,payeThresh:84000,payeBands:[{limit:1000000,rate:0.25},{limit:Infinity,rate:0.30}]};
+// Barbados: NIS 9.75%/10.5%, no HS, PAYE free @25,000
+if(loc==='BB')return{nisEmp:0.0975,nisEmpR:0.105,healthSurcharge:0,payeThresh:25000,payeBands:[{limit:Infinity,rate:0.25}]};
+// Suriname: AOV/AWW 2.5%/5%, no HS, Loonbelasting progressive free @~18,000 SRD
+if(loc==='SR')return{nisEmp:0.025,nisEmpR:0.05,healthSurcharge:0,payeThresh:18000,payeBands:[{limit:50000,rate:0.08},{limit:100000,rate:0.18},{limit:200000,rate:0.28},{limit:Infinity,rate:0.38}]};
+// Guyana: NIS 5.6%/8.4%, no HS, PAYE free @780,000 GYD, flat 28%
+if(loc==='GY')return{nisEmp:0.056,nisEmpR:0.084,healthSurcharge:0,payeThresh:780000,payeBands:[{limit:Infinity,rate:0.28}]};
+// Jamaica: NIS 3%/3%, NHT 2%/3%, Ed Tax 2.25%/3.5%, PAYE free @1,500,096 JMD
+if(loc==='JM')return{nisEmp:0.03,nisEmpR:0.03,healthSurcharge:0,payeThresh:1500096,nhtEmp:0.02,nhtEmpR:0.03,edTaxEmp:0.0225,edTaxEmpR:0.035,payeBands:[{limit:6000000,rate:0.25},{limit:Infinity,rate:0.30}]};
+// Saint Lucia: NIS 5%/5%, no HS, PAYE free @18,000 XCD, progressive
+if(loc==='LC')return{nisEmp:0.05,nisEmpR:0.05,healthSurcharge:0,payeThresh:18000,payeBands:[{limit:30000,rate:0.10},{limit:50000,rate:0.15},{limit:80000,rate:0.20},{limit:Infinity,rate:0.30}]};
+// Global fallback
+return{nisEmp:0.04,nisEmpR:0.06,healthSurcharge:0,payeThresh:50000,payeBands:[{limit:Infinity,rate:0.25}]};
 }
 
 static calculatePayroll(){
@@ -8872,20 +8903,26 @@ if(e.rateType==='salary'){
 }
 let paye=0;
 if(annualBasis>rates.payeThresh){
-  const taxableAnnual=annualBasis-rates.payeThresh;
+  let remaining=annualBasis-rates.payeThresh;
   let annualPAYE=0;
-  if(annualBasis<=1000000){
-    annualPAYE=taxableAnnual*0.25;
-  }else{
-    annualPAYE=(1000000-rates.payeThresh)*0.25+(annualBasis-1000000)*0.30;
+  let prevLimit=rates.payeThresh;
+  for(const band of (rates.payeBands||[{limit:Infinity,rate:0.25}])){
+    if(remaining<=0)break;
+    const bandSize=band.limit===Infinity?remaining:Math.min(remaining,band.limit-prevLimit);
+    annualPAYE+=bandSize*band.rate;
+    remaining-=bandSize;
+    prevLimit=band.limit;
   }
-  // Apportion annual PAYE back to this period
   paye=parseFloat((annualPAYE*(periodDays/365)).toFixed(2));
 }
-const totalDed=parseFloat((nis+parseFloat(hs)+paye).toFixed(2));
+// Jamaica: NHT + Education Tax (additional statutory deductions)
+let nht=0,edTax=0;
+if(rates.nhtEmp){nht=parseFloat((grossPay*rates.nhtEmp).toFixed(2));}
+if(rates.edTaxEmp){edTax=parseFloat((grossPay*rates.edTaxEmp).toFixed(2));}
+const totalDed=parseFloat((nis+parseFloat(hs)+paye+nht+edTax).toFixed(2));
 const net=parseFloat((grossPay-totalDed).toFixed(2));
 lines.push({empId:e.id,empName:e.name,empIcon:e.icon||'👤',
-position:e.position,rateType:e.rateType||'hourly',rate:e.rate||0,regHrs,otHrs,grossPay,nis,nisEr,hs:parseFloat(hs),paye,totalDed,net});
+position:e.position,rateType:e.rateType||'hourly',rate:e.rate||0,regHrs,otHrs,grossPay,nis,nisEr,hs:parseFloat(hs),paye,nht,edTax,totalDed,net});
 });
 if(!lines.length){
   this._clearErrors();
@@ -8904,7 +8941,7 @@ let h=`<div style="max-width:800px">
 <h3 style="margin-bottom:.5rem">💰 Payroll Preview</h3>
 <div style="color:var(--txt2);margin-bottom:1.5rem">${from} → ${to}</div>
 <div class="tbl"><div class="row hdr" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr">
-<div>Employee</div><div>Rate</div><div>Gross</div><div>NIS</div><div>HS</div><div>PAYE</div><div>Deductions</div><div style="color:var(--succ)">Net Pay</div></div>`;
+<div>Employee</div><div>Rate</div><div>Gross</div><div>NIS</div><div>${(this.cfg.loc||'TT')==='JM'?'NHT/Ed':'HS'}</div><div>PAYE</div><div>Deductions</div><div style="color:var(--succ)">Net Pay</div></div>`;
 lines.forEach(l=>{
 const rateLabels={hourly:'hr',salary:'mo',daily:'day',job:'job'};
 h+=`<div class="row" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr;align-items:center">
@@ -8912,7 +8949,7 @@ h+=`<div class="row" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr 1fr 1f
 <div style="font-size:.8rem;color:var(--txt2)">${sym}${this.fmt(l.rate)}/${rateLabels[l.rateType]||'hr'}</div>
 <div>${sym}${this.fmt(l.grossPay)}</div>
 <div style="color:var(--txt2)">${sym}${this.fmt(l.nis)}</div>
-<div style="color:var(--txt2)">${sym}${this.fmt(l.hs)}</div>
+<div style="color:var(--txt2)">${sym}${this.fmt((this.cfg.loc||'TT')==='JM'?(l.nht||0)+(l.edTax||0):l.hs)}</div>
 <div style="color:var(--txt2)">${sym}${this.fmt(l.paye)}</div>
 <div style="color:var(--err,#dc2626)">${sym}${this.fmt(l.totalDed)}</div>
 <div style="font-weight:700;color:var(--succ)">${sym}${this.fmt(l.net)}</div>
@@ -8926,7 +8963,7 @@ h+=`</div>
 <div style="background:var(--bg);padding:1rem;border-radius:8px;text-align:center"><div style="font-size:1.25rem;font-weight:700;color:var(--info)">${sym}${this.fmt(totalNisEr)}</div><div style="font-size:.75rem;color:var(--txt2)">NIS Employer</div></div>
 </div>
 <div style="background:var(--bg);padding:1rem;border-radius:8px;margin-top:1rem;font-size:.875rem;color:var(--txt2)">
-✅ Posting will: Dr. Salaries &amp; Wages (6000) · Dr. NIS Expense (6050) → Cr. Payroll Payable (2210) · Cr. NIS Payable (2310) · Cr. PAYE Payable (2410)
+✅ Posting will: Dr. Salaries &amp; Wages (6000) · Dr. NIS Expense (6050) → Cr. Payroll Payable (2210) · Cr. NIS Payable (2310) · Cr. PAYE Payable (2410)${(this.cfg.loc||'TT')==='JM'?' · Cr. NHT Payable (2510) · Cr. Ed Tax Payable (2520)':''}
 </div>
 <div style="display:flex;gap:1rem;margin-top:1.5rem">
 <button class="btn btn-sec" onclick="BOS.rPayroll()">Cancel</button>
@@ -8951,6 +8988,8 @@ const totalNis=lines.reduce((s,l)=>s+l.nis,0);
 const totalNisEr=lines.reduce((s,l)=>s+l.nisEr,0);
 const totalHs=lines.reduce((s,l)=>s+l.hs,0);
 const totalPaye=lines.reduce((s,l)=>s+l.paye,0);
+const totalNht=lines.reduce((s,l)=>s+(l.nht||0),0);
+const totalEdTax=lines.reduce((s,l)=>s+(l.edTax||0),0);
 const runId=this.nxt.pay++;
 const run={
 id:runId,periodFrom:from,periodTo:to,
@@ -8973,7 +9012,9 @@ lines:[
 {account:'2210',debit:0,credit:totalNet,description:'Payroll Payable — Net Pay'},
 {account:'2310',debit:0,credit:totalNis+totalNisEr,description:'NIS Payable (Emp+Er)'},
 {account:'2410',debit:0,credit:totalPaye,description:'PAYE Payable'},
-{account:'2510',debit:0,credit:totalHs,description:'Health Surcharge Payable'}
+{account:'2510',debit:0,credit:totalHs,description:'Health Surcharge Payable'},
+{account:'2520',debit:0,credit:totalNht,description:'NHT Payable (Jamaica)'},
+{account:'2530',debit:0,credit:totalEdTax,description:'Education Tax Payable (Jamaica)'}
 ].filter(l=>l.debit>0||l.credit>0)
 };
 this.journalEntries.push(je);
@@ -9252,6 +9293,8 @@ const hrAccounts=[
 {code:'2310',name:'NIS Payable',type:'liability',subtype:'current',balance:0,active:true},
 {code:'2410',name:'PAYE Payable',type:'liability',subtype:'current',balance:0,active:true},
 {code:'2510',name:'Health Surcharge Payable',type:'liability',subtype:'current',balance:0,active:true},
+{code:'2520',name:'NHT Payable',type:'liability',subtype:'current',balance:0,active:true},
+{code:'2530',name:'Education Tax Payable',type:'liability',subtype:'current',balance:0,active:true},
 {code:'6050',name:'NIS Employer Contribution',type:'expense',subtype:'operating',balance:0,active:true},
 ];
 let added=0;
