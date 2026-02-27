@@ -2566,13 +2566,13 @@ h+='</select></div><h4 style="margin:2rem 0 1rem">Line Items</h4><div id="po-ite
 (po.items||[]).forEach((item,idx)=>{
 h+='<div class="form-group" style="display:grid;grid-template-columns:3fr 1fr 1fr 1fr auto;gap:.75rem;align-items:end">';
 if(this.prod.length){
-h+='<div><label class="form-label" for="po-prod-'+i+'">Product</label><select aria-label="Product" id="po-prod-'+i+'" class="form-select po-item-prod" onchange="BOS.loadPOPrice(this)"><option value="">Select or type manually...</option>';
+h+='<div><label class="form-label" for="po-prod-'+idx+'">Product</label><select aria-label="Product" id="po-prod-'+idx+'" class="form-select po-item-prod" onchange="BOS.loadPOPrice(this)"><option value="">Select or type manually...</option>';
 this.prod.forEach(p=>h+=`<option value="${p.id}" data-cost="${p.cost}" ${p.id===item.pid?'selected':''}>${p.name}</option>`);
 h+='</select></div>';
-}else h+='<div><label class="form-label" for="po-desc-'+i+'">Description</label><input  aria-label="Description" id="po-desc-'+i+'" class="form-input po-item-desc" value="'+(item.desc||'')+'" required></div>';
-h+=`<div><label class="form-label" for="po-qty-'+i+'">Qty</label><input  aria-label="Qty" id="po-qty-'+i+'" class="form-input po-item-qty" type="number" value="${item.qty}" min="1" required onchange="BOS.calcPO()"></div>`;
-h+=`<div><label class="form-label" for="po-cost-'+i+'">Cost</label><input  aria-label="Cost" id="po-cost-'+i+'" class="form-input po-item-cost" type="number" step="0.01" value="${item.cost||item.price||0}" required onchange="BOS.calcPO()"></div>`;
-h+='<div><label class="form-label" for="po-amt-'+i+'">Amount</label><input  aria-label="Amount" id="po-amt-'+i+'" class="form-input po-item-amt" value="'+((item.qty*(item.cost||item.price||0)).toFixed(2))+'" readonly></div>';
+}else h+='<div><label class="form-label" for="po-desc-'+idx+'">Description</label><input  aria-label="Description" id="po-desc-'+idx+'" class="form-input po-item-desc" value="'+(item.desc||'')+'" required></div>';
+h+=`<div><label class="form-label" for="po-qty-'+idx+'">Qty</label><input  aria-label="Qty" id="po-qty-'+idx+'" class="form-input po-item-qty" type="number" value="${item.qty}" min="1" required onchange="BOS.calcPO()"></div>`;
+h+=`<div><label class="form-label" for="po-cost-'+idx+'">Cost</label><input  aria-label="Cost" id="po-cost-'+idx+'" class="form-input po-item-cost" type="number" step="0.01" value="${item.cost||item.price||0}" required onchange="BOS.calcPO()"></div>`;
+h+='<div><label class="form-label" for="po-amt-'+idx+'">Amount</label><input  aria-label="Amount" id="po-amt-'+idx+'" class="form-input po-item-amt" value="'+((item.qty*(item.cost||item.price||0)).toFixed(2))+'" readonly></div>';
 h+=`<button class="btn btn-dang" type="button" style="${idx===0?'opacity:.3;pointer-events:none':''}" onclick="this.parentElement.remove();BOS.calcPO()">✕</button></div>`;
 });
 h+='</div><button class="btn btn-sec" type="button" onclick="BOS.addPOItem()" style="margin:1rem 0">➕ Add Line</button>'+
