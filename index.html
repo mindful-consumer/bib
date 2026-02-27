@@ -11544,20 +11544,26 @@ return new Blob([final],{type:'text/html'});
 // ── Fire download counter ping (fire-and-forget, never blocks) ───────────
 static _pingDownloadCounter(){
 const isWeb=(window.location.hostname.endsWith('.github.io')||window.location.hostname==='mindful-consumer.github.io');
-if(!isWeb)return; // Only count downloads from the public vessel
-const endpoint=window.BIB_COUNTER_ENDPOINT||'/api/vessel-download';
+if(!isWeb)return;
+// Only ping if a real counter endpoint is configured.
+// Default /api/vessel-download does not exist on GitHub Pages (static host).
+// Set window.BIB_COUNTER_ENDPOINT to a Cloudflare Worker URL when ready.
+const endpoint=window.BIB_COUNTER_ENDPOINT||null;
+if(!endpoint)return; // No endpoint configured — skip silently, no console error
 try{
-fetch(endpoint,{
-method:'POST',
-headers:{'Content-Type':'application/json'},
-body:JSON.stringify({
+const payload=JSON.stringify({
 event:'vessel_download',
 date:new Date().toISOString().split('T')[0],
 lang:this.cfg.lang||'EN',
 loc:this.cfg.loc||'',
 v:this.v
-})
-}).catch(()=>{}); // Silent — sovereignty never waits for a server
+});
+// sendBeacon: fire-and-forget, never throws, never logs HTTP errors to console
+if(navigator.sendBeacon){
+navigator.sendBeacon(endpoint,new Blob([payload],{type:'application/json'}));
+}else{
+fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:payload,keepalive:true}).catch(()=>{});
+}
 }catch(e){}
 }
 
