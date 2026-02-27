@@ -11594,14 +11594,10 @@ this.alert('Vessel downloading...\n\nFile: '+filename+'\n\nOpen in any browser �
 static downloadVesselCode(){
 const isWeb=(window.location.hostname.endsWith('.github.io')||window.location.hostname==='mindful-consumer.github.io');
 if(isWeb){
-// Show contribution modal on every download UNTIL steward has contributed
-// Once contribution confirmed → flag set → download immediately forever after
-const hasContributed=localStorage.getItem('bib-contributed')==='true';
-if(hasContributed){
-this._executeDownload();
-}else{
+// Always show the contribution modal on public vessel — it personalises itself:
+// first-time visitor → gift offer
+// returning steward → acknowledgement of their contribution history + download
 this.showContributionModal();
-}
 }else{
 this._executeDownload();
 }
