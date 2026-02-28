@@ -1262,6 +1262,9 @@ static wizRender(){
 // Safety: ensure wiz is always a valid step number
 if(this.wiz===undefined||this.wiz===null)this.wiz=-1;
 if(!this.wizD)this.wizD={};
+// Scroll wizard body to top on every step
+const _wizBox=document.querySelector('#wizard .modal-box');
+if(_wizBox)_wizBox.scrollTop=0;
 const e=document.getElementById('wiz-content');
 const b=document.getElementById('wiz-back');
 const n=document.getElementById('wiz-next');
@@ -1322,8 +1325,12 @@ HI:{hint:'नाम और पहचान — आपके पोत को च
 const _w=_wl||{hint:'',ph:'e.g. My Business',icon:'Icon (optional)',struct:'Business Structure',does:'What do you do?',s1:'🏠 Sole Proprietorship',s2:'🤝 Partnership',s3:'🏛️ LLC',s4:'🏢 Corporation',s5:'🌐 Other',t1:'📦 Sell Products',t2:'💼 Provide Services',t3:'🏪 Both'};
 e.innerHTML='<div style="background:var(--bg);padding:1rem;border-radius:8px;margin-bottom:1.5rem;font-size:.875rem;color:var(--txt2);border-left:3px solid var(--p)">'+
 '<strong>'+this.t('wizard.step1')+' (1/4):</strong> '+_w.hint+'</div>'+
-'<div class="form-group"><label class="form-label" for="wiz-name">'+this.t('wizard.step1')+' *</label>'+
-'<input class="form-input" id="wiz-name" placeholder="'+_w.ph+'" required></div>'+
+'<div class="form-group" style="margin-bottom:1.5rem">'+
+'<label class="form-label" for="wiz-name" style="font-size:1rem;font-weight:700;color:var(--p);display:block;margin-bottom:.5rem">'+
+'✏️ '+this.t('wizard.step1')+' <span style="color:var(--dang)">*</span> <span style="font-size:.75rem;font-weight:400;color:var(--txt2)">(required)</span></label>'+
+'<input class="form-input" id="wiz-name" placeholder="'+_w.ph+'" required '+
+'style="font-size:1.125rem;border:2px solid var(--p);border-radius:8px;padding:.85rem 1rem">'+
+'<div style="font-size:.8rem;color:var(--txt2);margin-top:.35rem">👆 This is your vessel name — start here</div></div>'+
 '<div class="form-group"><label class="form-label" id="wiz-icon-label">'+_w.icon+'</label>'+
 '<div style="display:grid;grid-template-columns:repeat(8,1fr);gap:.5rem;margin-top:.5rem">'+
 ['🏢','🏪','🍕','☕','🛍️','💼','🔧','💇','🎨','📚','🏥','⚙️','🌱','🏭','🚚','💻'].map(icon=>
@@ -1340,9 +1347,31 @@ e.innerHTML='<div style="background:var(--bg);padding:1rem;border-radius:8px;mar
 ).join('')+'</div>';
 n.disabled=true;
 setTimeout(()=>{
-document.getElementById('wiz-name').addEventListener('input',()=>{
-n.disabled=!document.getElementById('wiz-name').value||!this.wizD.structure||!this.wizD.type;
-});
+const nameEl=document.getElementById('wiz-name');
+if(nameEl){
+  // Restore any previously entered name (back-nav retention prep)
+  if(this.wizD.name)nameEl.value=this.wizD.name;
+  // Auto-focus so steward can start typing immediately
+  nameEl.focus();
+  nameEl.addEventListener('input',()=>{
+    this.wizD.name=nameEl.value; // persist as steward types
+    n.disabled=!nameEl.value||!this.wizD.structure||!this.wizD.type;
+  });
+}
+// Restore structure/type selections visually after back-nav
+this._wizActivateOpts();
+// Re-apply 'sel' highlight on previously chosen structure/type
+if(this.wizD.structure||this.wizD.type){
+  document.querySelectorAll('#wiz-content .opt').forEach(el=>{
+    const oc=el.getAttribute('onclick')||'';
+    if(this.wizD.structure&&oc.includes("'structure','"+this.wizD.structure+"'"))el.classList.add('sel');
+    if(this.wizD.type&&oc.includes("'type','"+this.wizD.type+"'"))el.classList.add('sel');
+    if(this.wizD.icon&&el.textContent.trim()===this.wizD.icon)el.classList.add('sel');
+  });
+  // Re-check Next button state
+  const _ni=document.getElementById('wiz-name');
+  if(_ni)document.getElementById('wiz-next').disabled=!_ni.value||!this.wizD.structure||!this.wizD.type;
+}
 },100);
 }else if(this.wiz===1){
 const _loc={
@@ -1352,7 +1381,7 @@ const _other={EN:'Other',NL:'Anders',ES:'Otro',FR:'Autre',HI:'अन्य'}[thi
 e.innerHTML='<div style="font-size:1.125rem;font-weight:600;margin-bottom:1.5rem">'+_loc+'</div><div>'+
 ['🇹🇹 Trinidad & Tobago|TT','🇸🇷 Suriname|SR','🇧🇧 Barbados|BB','🇬🇾 Guyana|GY','🇯🇲 Jamaica|JM','🇱🇨 Saint Lucia|LC','🇺🇸 United States|US',`🌍 ${_other}|OT`].map(x=>{
 const[l,v]=x.split('|');
-return`<div class="opt" onclick="BOS.wizSel(this,'loc','${v}')">${l}</div>`;
+return`<div class="opt${this.wizD.loc===v?' sel':''}" onclick="BOS.wizSel(this,'loc','${v}')">${l}</div>`;
 }).join('')+'</div>';
 n.disabled=!this.wizD.loc;
 }else if(this.wiz===2){
@@ -1368,7 +1397,7 @@ const _industries=_indMap[this.cfg.lang||'EN']||_enInd;
 const _indTitle={EN:'Industry (optional)',NL:'Industrie (optioneel)',ES:'Industria (opcional)',FR:'Secteur (optionnel)',HI:'उद्योग (वैकल्पिक)'}[this.cfg.lang||'EN']||'Industry (optional)';
 e.innerHTML='<div style="font-size:1.125rem;font-weight:600;margin-bottom:1.5rem">'+_indTitle+'</div><div>'+
 _industries.map((ind,idx)=>
-`<div class="opt" onclick="BOS.wizSel(this,'industry','${_enInd[idx]}')">${ind}</div>`
+`<div class="opt${this.wizD.industry===_enInd[idx]?' sel':''}" onclick="BOS.wizSel(this,'industry','${_enInd[idx]}')">${ind}</div>`
 ).join('')+
 '</div>';
 n.disabled=false;
@@ -11545,30 +11574,25 @@ h+='<button class="btn" onclick="BOS.rMaint()">🔄 Re-scan</button>';
 h+='</div>';
 
 // ── Wipe Business Clean ───────────────────────────────────────────────────
-h+='<div style="background:var(--card);padding:2rem;border-radius:var(--rad);box-shadow:var(--sh);margin-bottom:2rem;border:2px solid var(--dang)">';
-h+='<h3 style="margin-bottom:.5rem;color:var(--dang)">⚠️ Danger Zone</h3>';
-h+='<p style="color:var(--txt2);margin-bottom:1.5rem;font-size:.9rem">Irreversible operations. Export a backup before proceeding.</p>';
-h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem">';
-
-// Wipe current vessel data (keep identity)
-h+='<div style="background:var(--bg);padding:1.5rem;border-radius:8px;border:1px solid var(--dang)">';
-h+='<h4 style="margin-bottom:.5rem;color:var(--dang)">🧹 Wipe This Business</h4>';
-h+='<p style="color:var(--txt2);font-size:.875rem;margin-bottom:1rem">Erases all records for <strong style="color:var(--txt)">'+(this.cfg.name||'this vessel')+'</strong> — invoices, contacts, products, journal entries, accounts. Vessel identity and lineage DNA are preserved.</p>';
-h+='<button class="btn btn-dang" onclick="BOS.confirmWipeVessel()">🧹 Wipe Business Data</button>';
+h+='<div style="background:var(--card);padding:1.25rem;border-radius:var(--rad);box-shadow:var(--sh);margin-bottom:2rem;border:2px solid var(--dang)">';
+h+='<h3 style="margin-bottom:.35rem;color:var(--dang)">⚠️ Danger Zone</h3>';
+h+='<p style="color:var(--txt2);margin-bottom:1rem;font-size:.825rem">Irreversible operations. Export a backup before proceeding.</p>';
+h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.75rem">';
+h+='<div style="background:var(--bg);padding:1rem;border-radius:8px;border:1px solid var(--dang)">';
+h+='<div style="font-weight:700;font-size:.875rem;color:var(--dang);margin-bottom:.35rem">🧹 Wipe This Business</div>';
+h+='<p style="color:var(--txt2);font-size:.775rem;margin-bottom:.75rem;line-height:1.4">Erases all records for <strong>'+(this.cfg.name||'this vessel')+'</strong>. Identity &amp; lineage preserved.</p>';
+h+='<button class="btn btn-dang" style="font-size:.75rem;padding:.3rem .75rem" onclick="BOS.confirmWipeVessel()">🧹 Wipe Data</button>';
 h+='</div>';
-
-// Delete current vessel entirely (remove from registry)
-h+='<div style="background:var(--bg);padding:1.5rem;border-radius:8px;border:1px solid var(--dang)">';
-h+='<h4 style="margin-bottom:.5rem;color:var(--dang)">🗑️ Delete This Business</h4>';
-h+='<p style="color:var(--txt2);font-size:.875rem;margin-bottom:1rem">Permanently removes <strong style="color:var(--txt)">'+(this.cfg.name||'this vessel')+'</strong> from this device — all data and its registry entry. Other vessels are not affected.</p>';
-h+='<button class="btn btn-dang" onclick="BOS.confirmDeleteVessel(\''+VesselManager.currentVesselId+'\')">🗑️ Delete This Business</button>';
+h+='<div style="background:var(--bg);padding:1rem;border-radius:8px;border:1px solid var(--dang)">';
+h+='<div style="font-weight:700;font-size:.875rem;color:var(--dang);margin-bottom:.35rem">🗑️ Delete Vessel</div>';
+h+='<p style="color:var(--txt2);font-size:.775rem;margin-bottom:.75rem;line-height:1.4">Permanently removes <strong>'+(this.cfg.name||'this vessel')+'</strong> from registry. Cannot be undone.</p>';
+h+='<button class="btn btn-dang" style="font-size:.75rem;padding:.3rem .75rem" onclick="BOS.confirmDeleteVessel(\''+VesselManager.currentVesselId+'\')" >🗑️ Delete</button>';
 h+='</div>';
-
-// Wipe ALL vessels
-h+='<div style="background:var(--bg);padding:1.5rem;border-radius:8px;border:1px solid var(--dang)">';
-h+='<h4 style="margin-bottom:.5rem;color:var(--dang)">💣 Wipe All Vessels</h4>';
-h+='<p style="color:var(--txt2);font-size:.875rem;margin-bottom:1rem">Erases every vessel and all their data from this device. localStorage is cleared entirely. Vessel lineage DNA is permanently lost. This cannot be undone.</p>';
-h+='<button class="btn btn-dang" onclick="BOS.confirmWipeAll()">💣 Wipe Everything</button>';
+h+='<div style="background:var(--bg);padding:1rem;border-radius:8px;border:1px solid var(--dang)">';
+h+='<div style="font-weight:700;font-size:.875rem;color:var(--dang);margin-bottom:.35rem">💣 Wipe All Vessels</div>';
+h+='<p style="color:var(--txt2);font-size:.775rem;margin-bottom:.75rem;line-height:1.4">Clears every vessel and all data from device. Lineage DNA permanently lost.</p>';
+h+='<button class="btn btn-dang" style="font-size:.75rem;padding:.3rem .75rem" onclick="BOS.confirmWipeAll()">💣 Wipe All</button>';
+h+='</div>';
 h+='</div>';
 
 // ── V2V — Vessel-to-Vessel Exchange ────────────────────────────────────────
