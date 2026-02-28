@@ -1209,7 +1209,7 @@ const cash=revenue-expenses;
 const pend=this.inv.filter(x=>x.status!=='paid').reduce((s,i)=>s+(i.total||0),0);
 // Today = Sales paid today
 const today=new Date().toISOString().split('T')[0];
-const todaySales=this.inv.filter(x=>x.date===today&&x.status==='paid').reduce((s,i)=>s+(i.total||0),0);
+const todaySales=this.inv.filter(x=>(x.paidAt||x.date)===today&&x.status==='paid').reduce((s,i)=>s+(i.total||0),0);
 document.getElementById('m-cash').textContent=sym+this.fmt(cash);
 document.getElementById('m-pend').textContent=sym+this.fmt(pend);
 document.getElementById('m-today').textContent=sym+this.fmt(todaySales);
@@ -2365,7 +2365,8 @@ const sorted=[...this.inv].sort((a,b)=>sortOrder==='desc'?new Date(b.date)-new D
 h+='<div class="tbl"><div class="row hdr" style="grid-template-columns:1fr 2fr 1fr 1fr 1fr 1fr"><div>Number</div><div>Customer</div><div>Date</div><div>Amount</div><div>Status</div><div>Actions</div></div>';
 sorted.forEach(i=>{
 const isDraft=i.status==='draft';
-const editBtn=isDraft?'<button class="btn" onclick="BOS.editInv('+i.id+')">✏️ Edit</button>':'';
+const canEdit=(i.status==='draft'||i.status==='overdue');
+const editBtn=canEdit?'<button class="btn" onclick="BOS.editInv('+i.id+')">✏️ Edit</button>':'';
 const delBtn='<button class="btn btn-dang" onclick="BOS.delInv('+i.id+')">Del</button>';
 const sym=i.sym||this.cfg.sym||'$';
 const secDisplay=i.secondaryCur&&i.secondaryTotal?`<div style="font-size:.75rem;color:var(--txt2)">${i.secondarySym||''}${this.fmt(i.secondaryTotal)} ${i.secondaryCur}</div>`:'';
@@ -2375,7 +2376,7 @@ const payBtn=payLink?`<a href="${payLink}" target="_blank" rel="noopener" class=
 const canDeliver=(i.status==='paid'||i.status==='sent');
 const hasDelivery=this.deliveries.find(d=>d.invId===i.id);
 const deliverBtn=canDeliver?`<button class="btn btn-sec" onclick="BOS.createDelivery(${i.id})" title="${hasDelivery?'View delivery':'Create delivery order'}" style="${hasDelivery?'border-color:var(--succ);color:var(--succ)':''}">🚚${hasDelivery?' ✓':''}</button>`:'';
-h+=`<div class="row inv-row" style="grid-template-columns:1fr 2fr 1fr 1fr 1fr 1fr" data-num="${(i.num||'').toLowerCase()}" data-cust="${(i.custName||'').toLowerCase()}" data-status="${i.status}"><div>${i.num}</div><div>${i.custName}</div><div>${i.date}</div><div>${sym}${this.fmt(i.total)}${secDisplay}</div><div><span class="status ${i.status}">${i.status}</span></div><div style="display:flex;gap:.4rem;flex-wrap:wrap">${editBtn}${payBtn}${deliverBtn}<button class="btn btn-sec" onclick="BOS.chgStatus(${i.id})">Status</button><button class="btn" onclick="BOS.pdf(${i.id},'inv')">PDF</button><button class="btn btn-sec" onclick="BOS.v2vSend(${i.id})" title="Send to another vessel">🤝</button>${delBtn}</div></div>`;
+h+=`<div class="row inv-row" style="grid-template-columns:1fr 2fr 1fr 1fr 1fr 1fr" data-num="${(i.num||'').toLowerCase()}" data-cust="${(i.custName||'').toLowerCase()}" data-status="${i.status}"><div>${i.num}</div><div>${i.custName}</div><div>${i.date}</div><div>${sym}${this.fmt(i.total)}${secDisplay}</div><div><span class="status ${i.status}">${i.status}</span></div><div style="display:flex;gap:.4rem;flex-wrap:wrap">${editBtn}${payBtn}${deliverBtn}<button class="btn btn-sec" onclick="BOS.chgStatus(${i.id})">Status</button><button class="btn btn-sec" onclick="BOS.previewInv(${i.id})" title="View invoice details">👁 View</button><button class="btn" onclick="BOS.pdf(${i.id},'inv')">PDF</button><button class="btn btn-sec" onclick="BOS.v2vSend(${i.id})" title="Send to another vessel">🤝</button>${delBtn}</div></div>`;
 });
 h+='</div>';
 }
@@ -2503,6 +2504,8 @@ this.log('info','Reduced stock: '+prod.name+' by '+item.qty+' (now '+prod.qty+')
 
 // Change status
 i.status=newStatus;
+// Stamp paidAt when marking paid (used for Today metric and audit)
+if(newStatus==='paid')i.paidAt=new Date().toISOString().split('T')[0];
 
 // Add audit trail
 if(!i.statusHistory)i.statusHistory=[];
@@ -2517,8 +2520,9 @@ by:'Steward'
 if(oldStatus!=='paid'&&i.status==='paid'){
 const jeOk=this.autoJournalFromInvoice(i);
 // If accounting is active and JE failed, revert stock and status
-if(this.accountingMode&&jeOk===false){
+if(jeOk===false){
 i.status=oldStatus;
+if(i.paidAt)delete i.paidAt; // un-stamp payment date on revert
 // Revert stock reductions
 i.items.forEach(item=>{
 if(item.pid){
@@ -2534,7 +2538,17 @@ return;
 this.save();
 this.log('info','Invoice '+i.num+' status changed: '+oldStatus+' → '+i.status);
 this.rSales();
+this.updCards();
 this.updMetrics();
+// If accounting panel is open, refresh the active tab so JE/reports update immediately
+const acctBody=document.getElementById('acct-body');
+if(acctBody){
+  const activeTab=document.querySelector('.tab-btn.active');
+  if(activeTab){
+    const tabId=activeTab.id.replace('tab-','');
+    this.rAccountingTab(tabId);
+  }
+}
 }
 
 static updateInv(){
@@ -2687,6 +2701,7 @@ po.items=items;
 po.total=tot;
 if(!po.editHistory)po.editHistory=[];
 po.editHistory.push({timestamp:new Date().toISOString(),by:'Steward',changes:'PO updated'});
+this._dirtyReset();
 this.save();
 this.log('success','PO '+po.num+' updated');
 this.editingItem=null;
@@ -3097,6 +3112,7 @@ if(shipping>0&&this.accountingMode){
 this.log('success','Invoice '+inv.num+' created for '+c.name+(shipping?' + '+this.cfg.sym+this.fmt(shipping)+' shipping':'')+(+_secTotal?' ('+this.cfg.secondarySym+this.fmt(_secTotal)+' '+this.cfg.secondaryCur+')':''));
 }
 this.editingItem=null;
+this._dirtyReset();
 this.save();
 this.rSales();
 this.updCards();this.updMetrics();
@@ -3105,28 +3121,136 @@ this.updCards();this.updMetrics();
 static editInv(id){
 const inv=this.inv.find(x=>x.id===id);
 if(!inv)return;
-if(inv.status==='paid'){
-this.alert('Cannot edit paid invoices. Status must be changed to "draft" or "sent" first for audit compliance.');
+if(inv.status==='paid'||inv.status==='sent'){
+this.alert('Cannot edit a '+inv.status+' invoice. Change status to draft first.');
 return;
 }
 this.editingItem=inv;
 this.log('info','Editing invoice '+inv.num);
 this.newInv();
-// Populate form with existing data
-document.getElementById('inv-cust').value=inv.cid;
-document.getElementById('inv-date').value=inv.date;
+// Populate header fields
+document.getElementById('inv-cust').value=inv.cid||'';
+document.getElementById('inv-date').value=inv.date||'';
+if(document.getElementById('inv-shipping'))document.getElementById('inv-shipping').value=inv.shipping||0;
+// Populate line items
 document.getElementById('items').innerHTML='';
-inv.items.forEach(item=>{
-this.addInvItem();
+(inv.items||[]).forEach(item=>{
+this.addItem(); // addItem() is the correct method — adds one invItem row
 const rows=document.querySelectorAll('#items .form-group');
 const row=rows[rows.length-1];
 const prodSel=row.querySelector('.item-prod');
-if(prodSel&&item.pid)prodSel.value=item.pid;
-row.querySelector('.item-qty').value=item.qty;
-row.querySelector('.item-price').value=item.price;
-row.querySelector('.item-amt').value=item.amt;
+if(prodSel&&item.pid){
+  prodSel.value=item.pid;
+  // Trigger price load
+  const evt=new Event('change');
+  prodSel.dispatchEvent(evt);
+}
+const qtyEl=row.querySelector('.item-qty');
+if(qtyEl)qtyEl.value=item.qty;
+const priceEl=row.querySelector('.item-price');
+if(priceEl)priceEl.value=item.price||item.cost||0;
+const descEl=row.querySelector('.item-desc');
+if(descEl)descEl.value=item.desc||'';
 });
 this.calc();
+}
+
+static previewInv(id){
+const i=this.inv.find(x=>x.id===id);
+if(!i){this.alert('Invoice not found.');return;}
+const sym=i.sym||this.cfg.sym||'$';
+const statusColor={draft:'var(--txt2)',sent:'var(--info)',paid:'var(--succ)',overdue:'var(--dang)'}[i.status]||'var(--txt)';
+const cust=this.people.find(p=>p.id==i.cid)||{name:i.custName||'—',address:'',phone:'',email:''};
+
+// Build items table
+let itemRows='';
+(i.items||[]).forEach(item=>{
+const prod=this.prod.find(p=>p.id===item.pid)||{};
+const desc=item.desc||prod.name||'Item';
+itemRows+=`<tr style="border-bottom:1px solid var(--bord)">
+<td style="padding:.5rem">${desc}</td>
+<td style="padding:.5rem;text-align:right">${item.qty}</td>
+<td style="padding:.5rem;text-align:right">${sym}${this.fmt(item.price||item.cost||0)}</td>
+<td style="padding:.5rem;text-align:right;font-weight:600">${sym}${this.fmt(item.total||(item.qty*(item.price||0)))}</td>
+</tr>`;
+});
+
+// Secondary currency line
+const secLine=i.secondaryCur&&i.secondaryTotal
+?`<div style="color:var(--txt2);font-size:.85rem;margin-top:.25rem">${i.secondarySym||''}${this.fmt(i.secondaryTotal)} ${i.secondaryCur} @ rate ${i.exchangeRate||this.cfg.exchangeRate||1}</div>`:'';
+
+let h=`<div style="background:var(--card);padding:2rem;border-radius:var(--rad);box-shadow:var(--sh);max-width:720px;margin:0 auto">
+<!-- Header bar -->
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2rem">
+  <h3 style="margin:0">📄 Invoice ${i.num}</h3>
+  <span class="status ${i.status}" style="font-size:1rem;padding:.35rem .9rem">${i.status.toUpperCase()}</span>
+</div>
+<!-- Vessel & customer info -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:2rem;margin-bottom:2rem">
+  <div>
+    <div style="font-weight:700;font-size:1.05rem">${this.cfg.name||'—'}</div>
+    <div style="color:var(--txt2);font-size:.875rem">${this.cfg.address||''}</div>
+    <div style="color:var(--txt2);font-size:.875rem">${this.cfg.phone||''}</div>
+    <div style="color:var(--txt2);font-size:.875rem">${this.cfg.email||''}</div>
+  </div>
+  <div style="text-align:right">
+    <div style="font-weight:700">Bill To</div>
+    <div>${cust.name}</div>
+    <div style="color:var(--txt2);font-size:.875rem">${cust.address||''}</div>
+    <div style="color:var(--txt2);font-size:.875rem">${cust.phone||''}</div>
+  </div>
+</div>
+<!-- Meta row -->
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;padding:1rem;background:var(--bg);border-radius:8px;margin-bottom:1.5rem">
+  <div><div style="font-size:.75rem;color:var(--txt2)">DATE</div><div>${i.date||'—'}</div></div>
+  <div><div style="font-size:.75rem;color:var(--txt2)">INVOICE #</div><div>${i.num}</div></div>
+  <div><div style="font-size:.75rem;color:var(--txt2)">CURRENCY</div><div>${sym} ${i.cur||this.cfg.cur||''}</div></div>
+</div>
+<!-- Items table -->
+<table style="width:100%;border-collapse:collapse;margin-bottom:1.5rem">
+<thead>
+  <tr style="background:var(--p);color:#fff">
+    <th style="padding:.5rem;text-align:left">Description</th>
+    <th style="padding:.5rem;text-align:right">Qty</th>
+    <th style="padding:.5rem;text-align:right">Unit Price</th>
+    <th style="padding:.5rem;text-align:right">Amount</th>
+  </tr>
+</thead>
+<tbody>${itemRows}</tbody>
+</table>
+<!-- Totals -->
+<div style="display:flex;justify-content:flex-end">
+  <div style="width:280px">
+    <div style="display:flex;justify-content:space-between;padding:.4rem 0;border-bottom:1px solid var(--bord)">
+      <span>Subtotal</span><span>${sym}${this.fmt(i.sub||0)}</span>
+    </div>`;
+if((i.tax||0)>0)h+=`
+    <div style="display:flex;justify-content:space-between;padding:.4rem 0;border-bottom:1px solid var(--bord)">
+      <span>VAT / Tax (${i.taxRate||this.cfg.tax||0}%)</span><span>${sym}${this.fmt(i.tax||0)}</span>
+    </div>`;
+if((i.shipping||0)>0)h+=`
+    <div style="display:flex;justify-content:space-between;padding:.4rem 0;border-bottom:1px solid var(--bord)">
+      <span>Shipping</span><span>${sym}${this.fmt(i.shipping||0)}</span>
+    </div>`;
+h+=`
+    <div style="display:flex;justify-content:space-between;padding:.75rem 0;font-size:1.2rem;font-weight:700;color:var(--p)">
+      <span>Total</span><span>${sym}${this.fmt(i.total||0)}</span>
+    </div>${secLine}
+  </div>
+</div>`;
+if(i.notes)h+=`<div style="margin-top:1.5rem;padding:1rem;background:var(--bg);border-radius:8px;color:var(--txt2);font-size:.875rem"><strong>Notes:</strong> ${i.notes}</div>`;
+// Action bar
+h+=`<div style="display:flex;gap:1rem;margin-top:2rem;flex-wrap:wrap">
+  <button class="btn" onclick="BOS.pdf(${i.id},'inv')">📄 Download PDF</button>
+  <button class="btn btn-sec" onclick="BOS.v2vSend(${i.id})">🤝 Send V2V</button>
+  <button class="btn btn-sec" onclick="BOS.chgStatus(${i.id});BOS.previewInv(${i.id})">🔄 Cycle Status</button>
+  <button class="btn" onclick="BOS.rSales()">← Back to Invoices</button>
+</div>
+</div>`;
+document.getElementById('exp-title').textContent='📄 Invoice '+i.num;
+document.getElementById('exp-body').innerHTML=h;
+document.getElementById('exp').classList.add('show');
+this.log('info','Previewing invoice '+i.num);
 }
 
 static savePO(){
@@ -3188,6 +3312,7 @@ const tot=items.reduce((s,i)=>s+i.amt,0);
 const po={id:Date.now(),num:'PO-'+this.nxt.po++,vid,vendName:v.name,date:dt,items,total:tot,
 cur:this.cfg.cur,sym:this.cfg.sym,status:'draft'};
 this.po.push(po);
+this._dirtyReset();
 this.save();
 this.log('success','Purchase Order '+po.num+' created for '+v.name+' with account assignments');
 this.rPO();
@@ -3224,7 +3349,14 @@ this.autoJournalFromPO(p);
 this.save();
 this.log('info','PO '+p.num+' status: '+p.status);
 this.rPO();
+this.updCards();
 this.updMetrics();
+// Auto-refresh accounting panel if open
+const acctBody=document.getElementById('acct-body');
+if(acctBody){
+  const activeTab=document.querySelector('.tab-btn.active');
+  if(activeTab){const tabId=activeTab.id.replace('tab-','');this.rAccountingTab(tabId);}
+}
 }
 
 static po2Inv(id){
@@ -3963,12 +4095,37 @@ this.rProfile();
 }
 
 static saveProfile(){
+// ── Core identity
 this.cfg.name=document.getElementById('prof-name').value;
+const stEl=document.getElementById('prof-structure');
+if(stEl)this.cfg.structure=stEl.value;
 this.cfg.type=document.getElementById('prof-type').value;
+const inEl=document.getElementById('prof-industry');
+if(inEl)this.cfg.industry=inEl.value;
 this.cfg.regNumber=document.getElementById('prof-reg').value;
 this.cfg.established=document.getElementById('prof-est').value;
 this.cfg.fiscalYearEnd=document.getElementById('prof-fiscal').value;
-// Logo is saved to cfg.logoData by previewLogo() — persists on save
+// ── Location & currency
+const locEl=document.getElementById('prof-loc');
+if(locEl)this.cfg.loc=locEl.value;
+const curEl=document.getElementById('prof-cur');
+if(curEl)this.cfg.cur=curEl.value;
+const symEl=document.getElementById('prof-sym');
+if(symEl)this.cfg.sym=symEl.value;
+// ── Secondary currency
+const scurEl=document.getElementById('prof-scur');
+if(scurEl)this.cfg.secondaryCur=scurEl.value;
+const ssymEl=document.getElementById('prof-ssym');
+if(ssymEl)this.cfg.secondarySym=ssymEl.value;
+const xrateEl=document.getElementById('prof-xrate');
+if(xrateEl&&xrateEl.value)this.cfg.exchangeRate=parseFloat(xrateEl.value)||null;
+// ── Invoice footers
+const f1=document.getElementById('prof-footer1');
+if(f1)this.cfg.invoiceFooter1=f1.value;
+const f2=document.getElementById('prof-footer2');
+if(f2)this.cfg.invoiceFooter2=f2.value;
+// Logo saved by previewLogo() — persists here automatically
+// ── Registry sync
 const registry=VesselManager.getRegistry();
 const vessel=registry.find(v=>v.id===VesselManager.currentVesselId);
 if(vessel)vessel.name=this.cfg.name;
@@ -4123,7 +4280,7 @@ h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">';
 h+='<div class="form-group"><label class="form-label" for="prof-structure">Business Structure</label><select class="form-select" id="prof-structure" name="biz-structure"><option value="">Select...</option>';
 ['Sole Proprietorship','Partnership','LLC','Corporation','Other'].forEach(s=>h+=`<option value="${s.toLowerCase().replace(/ /g,'_')}" ${this.cfg.structure===s.toLowerCase().replace(/ /g,'_')?'selected':''}>${s}</option>`);
 h+='</select></div>';
-h+='<div class="form-group"><label class="form-label" for="prof-type">Business Type</label><select class="form-select" id="prof-type" name="biz-type"><option value="products" '+(this.cfg.type==='products'?'selected':'')+'>🛒 Products</option><option value="services" '+(this.cfg.type==='services'?'selected':'')+'>🔧 Services</option><option value="both" '+(this.cfg.type==='both'||!this.cfg.type?'selected':'')+'>📦 Products & Services</option></select></div>';
+h+='<div class="form-group"><label class="form-label" for="prof-type">Business Type</label><select class="form-select" id="prof-type" name="biz-type"><option value="retail" '+(this.cfg.type==='retail'?'selected':'')+'>🛒 Retail</option><option value="wholesale" '+(this.cfg.type==='wholesale'?'selected':'')+'>📦 Wholesale</option><option value="distribution" '+(this.cfg.type==='distribution'?'selected':'')+'>🚚 Distribution</option><option value="services" '+(this.cfg.type==='services'?'selected':'')+'>🔧 Services</option><option value="products" '+(this.cfg.type==='products'?'selected':'')+'>🏭 Manufacturing</option><option value="both" '+(this.cfg.type==='both'||!this.cfg.type?'selected':'')+'>🔄 Mixed (Products & Services)</option></select></div>';
 h+='<div class="form-group"><label class="form-label" for="prof-industry">Industry</label><select class="form-select" id="prof-industry" name="biz-industry" onchange="BOS.toggleIndustryOther(this)"><option value="">Select...</option>';
 const industries=['Retail','Food Service','Professional Services','Construction','Healthcare','Technology','Manufacturing','Agriculture','Education','Transportation','Hospitality','Real Estate','Other'];
 const isOtherIndustry=this.cfg.industry&&!industries.includes(this.cfg.industry);
@@ -4171,7 +4328,7 @@ h+='</div>';
 h+='<h4 style="margin:2rem 0 1rem;padding-bottom:.5rem;border-bottom:2px solid var(--bord)">Location & Currency</h4>';
 h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem">';
 h+='<div class="form-group"><label class="form-label" for="prof-loc">Location</label><select class="form-select" id="prof-loc" name="biz-loc">';
-const locs={TT:'🇹🇹 Trinidad & Tobago',SR:'🇸🇷 Suriname',BB:'🇧🇧 Barbados',US:'🇺🇸 United States',OT:'🌍 Other'};
+const locs={TT:'🇹🇹 Trinidad & Tobago',SR:'🇸🇷 Suriname',BB:'🇧🇧 Barbados',GY:'🇬🇾 Guyana',JM:'🇯🇲 Jamaica',LC:'🇱🇨 Saint Lucia',US:'🇺🇸 United States',OT:'🌍 Other'};
 Object.entries(locs).forEach(([k,v])=>h+=`<option value="${k}" ${this.cfg.loc===k?'selected':''}>${v}</option>`);
 h+='</select></div>';
 h+='<div class="form-group"><label class="form-label" for="prof-cur">Primary Currency Code</label><input class="form-input" id="prof-cur" name="biz-cur" value="'+(this.cfg.cur||'USD')+'" placeholder="USD, TTD, EUR"></div>';
@@ -4562,7 +4719,10 @@ return true;
 
 // Auto-create JE from Invoice (when paid)
 static autoJournalFromInvoice(inv){
-if(!this.accountingMode)return;
+// Always post JE — auto-initialise COA if vessel hasn't set one up yet
+if(!this.accountingMode||!this.accounts||!this.accounts.length){
+  this.initializeAccounts();
+}
 
 // Cash basis: record at payment date
 // Dr Cash = full amount received (sub + tax + shipping)
@@ -4619,7 +4779,7 @@ lines
 
 // Auto-create JE from PO (when paid)
 static autoJournalFromPO(po){
-if(!this.accountingMode)return;
+if(!this.accountingMode||!this.accounts||!this.accounts.length){this.initializeAccounts();}
 
 // Enhanced: Multi-account journal entry based on line item account assignments
 const lines=[];
@@ -4677,11 +4837,9 @@ const tab=`<div class="tab-bar">
 <button class="tab-btn" id="tab-reports" type="button" onclick="BOS.rAccountingTab('reports')">📈 ${BOS.u('financialReports')}</button>
 <button class="tab-btn" id="tab-opening" type="button" onclick="BOS.rAccountingTab('opening')">⚖️ ${BOS.u('openingBalances')}</button>
 <button class="tab-btn" id="tab-recon" type="button" onclick="BOS.rAccountingTab('recon')">🏦 ${BOS.u('bankRecon')}</button>
-</div>`;
-
-let h=tab;
-h+=this.rChartOfAccounts();
-document.getElementById('exp-body').innerHTML=h;
+</div><div id="acct-body"></div>`;
+document.getElementById('exp-body').innerHTML=tab;
+this.rAccountingTab('coa');
 }
 
 static rAccountingTab(tab){
@@ -4700,8 +4858,8 @@ else if(tab==='ledger')content=this.rGeneralLedger();
 else if(tab==='reports')content=this.rFinancialReports();
 else if(tab==='recon')content=this.rBankRecon();
 
-const body=document.getElementById('exp-body');
-body.innerHTML=body.innerHTML.split('</div>')[0]+'</div>'+content;
+const body=document.getElementById('acct-body');
+if(body)body.innerHTML=content;
 }
 
 // Chart of Accounts View
@@ -5095,9 +5253,8 @@ return h;
 }
 
 static applyGLFilter(){
-const body=document.getElementById('exp-body');
-const tab=body.innerHTML.split('</div>')[0]+'</div>';
-body.innerHTML=tab+this.rGeneralLedger();
+const body=document.getElementById('acct-body');
+if(body)body.innerHTML=this.rGeneralLedger();
 }
 
 static glSetRange(range){
@@ -5396,6 +5553,7 @@ totalExpenses:expenses.reduce((s,x)=>s+x.balance,0)
 }
 
 static generateBalanceSheet(fromDate,toDate){
+this.rebuildLedger(); // ensure balances are fresh before rendering
 const sym=this.cfg.sym||'$';
 const asOfDate=toDate||new Date().toISOString().split('T')[0];
 // Calculate account balances filtered to date range
@@ -5495,6 +5653,7 @@ return h;
 
 // Generate Income Statement
 static generateIncomeStatement(fromDate,toDate){
+this.rebuildLedger(); // ensure balances are fresh before rendering
 const sym=this.cfg.sym||'$';
 const periodFrom=fromDate||new Date().getFullYear()+'-01-01';
 const periodTo=toDate||new Date().toISOString().split('T')[0];
