@@ -73,7 +73,8 @@ body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--txt);line
 .exp.show{display:flex}
 .exp-hdr{padding:1rem 2rem;background:var(--card);border-bottom:2px solid var(--p);box-shadow:var(--sh);display:flex;gap:1rem;align-items:center}
 .exp-body{flex:1;overflow-y:auto;padding:2rem;scroll-behavior:smooth}
-.tbl{background:var(--card);border-radius:var(--rad);overflow:hidden;box-shadow:var(--sh);margin:1rem 0}
+.tbl{background:var(--card);border-radius:var(--rad);overflow:visible;box-shadow:var(--sh);margin:1rem 0}
+.rep-active{outline:2px solid var(--p)!important;box-shadow:0 0 0 4px rgba(99,102,241,.12)!important}
 .row{display:grid;gap:1rem;padding:1rem 1.5rem;border-bottom:1px solid var(--bord);align-items:center}
 .row:hover:not(.hdr){background:var(--bg)}
 .row.hdr{background:var(--bg);font-weight:700;font-size:.875rem;text-transform:uppercase}
@@ -146,9 +147,10 @@ to{opacity:1;transform:translateY(0)}
 .bar-metrics{flex-wrap:wrap;gap:1rem}
 .surface{grid-template-columns:1fr;padding:1rem}
 /* Tables */
-.row{grid-template-columns:1fr;gap:.5rem}
+.row{grid-template-columns:1fr!important;gap:.4rem;padding:.75rem}
 .row.hdr{display:none}
-.row>div:last-child{display:flex;flex-wrap:wrap;gap:.25rem}
+.row>div:last-child{display:flex;flex-wrap:wrap;gap:.25rem;width:100%}
+.row>div:last-child .btn{flex:0 0 auto}
 /* Buttons */
 .btn{font-size:.75rem;padding:.4rem .6rem}
 /* Exp panel — full viewport, always scrolls from top */
@@ -183,6 +185,16 @@ div[style*="grid-template-columns:repeat(4,1fr)"]{grid-template-columns:repeat(2
 div[style*="grid-template-columns:1fr 1fr 1fr;gap:1rem"]{grid-template-columns:1fr!important}
 /* Prevent horizontal overflow globally */
 .exp-body *{max-width:100%;box-sizing:border-box}
+/* Knowledge/slides — tighter header on mobile */
+.knowledge-presentation [style*="padding:1.5rem 2rem"]{padding:.75rem 1rem!important}
+/* Slide content padding */
+.knowledge-presentation [style*="padding:2rem"]{padding:1rem!important}
+/* Advanced report cards — 2 cols on mobile */
+div[style*="grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:2rem"]{grid-template-columns:repeat(2,1fr)!important}
+/* Secondary currency auto-fill already set; additional mobile guard */
+div[style*="minmax(140px,1fr)"]{grid-template-columns:1fr!important}
+/* Slide nav footer new layout */
+.knowledge-presentation [style*="min-width:110px"]{min-width:90px!important;padding:.5rem .75rem!important}
 }
 @media(max-width:480px){
 .bar-metrics .metric{flex:1 1 calc(50% - .5rem)}
@@ -1332,7 +1344,7 @@ e.innerHTML='<div style="background:var(--bg);padding:1rem;border-radius:8px;mar
 'style="font-size:1.125rem;border:2px solid var(--p);border-radius:8px;padding:.85rem 1rem">'+
 '<div style="font-size:.8rem;color:var(--txt2);margin-top:.35rem">👆 This is your vessel name — start here</div></div>'+
 '<div class="form-group"><label class="form-label" id="wiz-icon-label">'+_w.icon+'</label>'+
-'<div style="display:grid;grid-template-columns:repeat(8,1fr);gap:.5rem;margin-top:.5rem">'+
+'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:.5rem;margin-top:.5rem">'+
 ['🏢','🏪','🍕','☕','🛍️','💼','🔧','💇','🎨','📚','🏥','⚙️','🌱','🏭','🚚','💻'].map(icon=>
 `<div class="opt" style="padding:.75rem;font-size:1.5rem;margin:0" onclick="BOS.selectIcon('${icon}')">${icon}</div>`
 ).join('')+
@@ -4339,7 +4351,7 @@ h+='<form onsubmit="event.preventDefault();BOS.saveProfile()">';
 h+='<h4 style="margin:2rem 0 1rem;padding-bottom:.5rem;border-bottom:2px solid var(--bord)">Basic Information</h4>';
 h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">';
 h+='<div class="form-group"><label class="form-label" for="prof-name">Business Name *</label><input class="form-input" id="prof-name" name="biz-name" value="'+(this.cfg.name||'')+'" required></div>';
-h+='<div class="form-group"><label class="form-label" for="prof-icon-grid">Business Icon</label><div id="prof-icon-grid" style="display:grid;grid-template-columns:repeat(8,1fr);gap:.5rem;margin-top:.5rem" role="group" aria-label="Select business icon">';
+h+='<div class="form-group"><label class="form-label" for="prof-icon-grid">Business Icon</label><div id="prof-icon-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:.5rem;margin-top:.5rem" role="group" aria-label="Select business icon">';
 const icons=['🏢','🏪','🍕','☕','🛍️','💼','🔧','💇','🎨','📚','🏥','⚙️','🌱','🏭','🚚','💻'];
 icons.forEach(icon=>{
 const selected=icon===this.cfg.icon?'sel':'';
@@ -4377,7 +4389,7 @@ h+='<h4 style="margin:2rem 0 1rem;padding-bottom:.5rem;border-bottom:2px solid v
 h+='<p style="color:var(--txt2);margin-bottom:1rem;font-size:.9rem">Manage tax rates with effective dates for jurisdictional changes</p>';
 h+='<div id="tax-rates">';
 this.cfg.taxRates.forEach((tr,idx)=>{
-h+='<div style="display:grid;grid-template-columns:1.5fr 1fr 2fr auto;gap:.75rem;align-items:end;margin-bottom:.75rem">';
+h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:.75rem;align-items:end;margin-bottom:.75rem">';
 h+=`<div class="form-group"><label class="form-label" for="tax-date-${idx}">Effective Date</label><input class="form-input tax-date" id="tax-date-${idx}" name="tax-date-${idx}" type="date" value="${tr.effectiveDate}" required></div>`;
 h+=`<div class="form-group"><label class="form-label" for="tax-rate-${idx}">Rate (%)</label><input class="form-input tax-rate" id="tax-rate-${idx}" name="tax-rate-${idx}" type="number" step="0.01" value="${tr.rate}" required></div>`;
 h+=`<div class="form-group"><label class="form-label" for="tax-desc-${idx}">Description</label><input class="form-input tax-desc" id="tax-desc-${idx}" name="tax-desc-${idx}" value="${tr.description||''}" placeholder="e.g., VAT increase"></div>`;
@@ -4389,7 +4401,7 @@ h+='<button class="btn btn-sec" type="button" onclick="BOS.addTaxRate()" style="
 
 // Language
 h+='<h4 style="margin:2rem 0 1rem;padding-bottom:.5rem;border-bottom:2px solid var(--bord)">🌍 Interface Language</h4>';
-h+='<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:.75rem;margin-bottom:1.5rem">';
+h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:.75rem;margin-bottom:1.5rem">';
 [['EN','🇬🇧','English'],['ES','🇪🇸','Español'],['NL','🇳🇱','Nederlands'],['FR','🇫🇷','Français'],['HI','🇮🇳','हिन्दी']].forEach(([code,flag,name])=>{
 const active=this.cfg.lang===code;
 h+=`<div class="opt${active?' sel':''}" style="text-align:center;padding:.75rem;font-size:.875rem" onclick="BOS.switchLang('${code}')"><div style="font-size:1.5rem">${flag}</div><div style="font-weight:600;margin-top:.25rem">${code}</div><div style="font-size:.75rem;opacity:.7">${name}</div></div>`;
@@ -4409,7 +4421,7 @@ h+='</div>';
 // Secondary / Foreign Currency
 h+='<h4 style="margin:2rem 0 1rem;padding-bottom:.5rem;border-bottom:2px solid var(--bord)">🌐 Foreign Currency (Optional)</h4>';
 h+='<p style="color:var(--txt2);margin-bottom:1rem;font-size:.875rem">Enable to show a second currency on invoices — useful when billing international customers. Exchange rate is entered manually to maintain sovereignty.</p>';
-h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:1rem">';
+h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:.75rem">';
 h+='<div class="form-group"><label class="form-label" for="prof-scur">Secondary Currency Code</label><input class="form-input" id="prof-scur" value="'+(this.cfg.secondaryCur||'')+'" placeholder="USD, EUR, GBP"></div>';
 h+='<div class="form-group"><label class="form-label" for="prof-ssym">Secondary Symbol</label><input class="form-input" id="prof-ssym" value="'+(this.cfg.secondarySym||'')+'" maxlength="3" placeholder="$"></div>';
 h+='<div class="form-group"><label class="form-label" for="prof-xrate">Exchange Rate</label><input class="form-input" type="number" step="0.0001" id="prof-xrate" value="'+(this.cfg.exchangeRate||'')+'" placeholder="e.g. 6.78 (1 primary = X secondary)"></div>';
@@ -4569,7 +4581,7 @@ otherInput.value='';
 static addTaxRate(){
 const container=document.getElementById('tax-rates');
 const idx='new'+Date.now();
-const newRate=`<div style="display:grid;grid-template-columns:1.5fr 1fr 2fr auto;gap:.75rem;align-items:end;margin-bottom:.75rem">
+const newRate=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:.75rem;align-items:end;margin-bottom:.75rem">
 <div class="form-group"><label class="form-label" for="tax-date-${idx}">Effective Date</label><input class="form-input tax-date" id="tax-date-${idx}" name="tax-date-${idx}" type="date" required></div>
 <div class="form-group"><label class="form-label" for="tax-rate-${idx}">Rate (%)</label><input class="form-input tax-rate" id="tax-rate-${idx}" name="tax-rate-${idx}" type="number" step="0.01" required></div>
 <div class="form-group"><label class="form-label" for="tax-desc-${idx}">Description</label><input class="form-input tax-desc" id="tax-desc-${idx}" name="tax-desc-${idx}" placeholder="e.g., VAT increase"></div>
@@ -8072,36 +8084,40 @@ if(_subtitle)h+=`<p style="text-align:center;color:var(--txt2);font-size:1.25rem
 h+=slide.content;
 h+='</div></div>';
 
-// Navigation Footer
-h+='<div style="display:flex;justify-content:space-between;align-items:center;padding:1.5rem 2rem;background:var(--card);border-top:2px solid var(--bord)">';
-h+=`<button class="btn" onclick="BOS.prevSlide()" ${this.currentSlide===0?'disabled':''}>← Previous</button>`;
-h+='<div style="display:flex;gap:.5rem;align-items:center">';
+// Navigation Footer — two-row layout: dots row + Prev/Next row
+// Row 1: dots centered
+h+='<div style="background:var(--card);border-top:2px solid var(--bord);padding:1rem 1rem .5rem">';
+h+='<div style="display:flex;justify-content:center;align-items:center;gap:.4rem;flex-wrap:wrap;margin-bottom:.75rem">';
 // Show first 15, current vicinity, last 5
 const total=this.slides.length;
 const curr=this.currentSlide;
 for(let i=0;i<Math.min(total,15);i++){
 const active=i===curr?'background:var(--p)':'background:var(--bord)';
-h+=`<div style="width:8px;height:8px;border-radius:50%;${active};cursor:pointer;transition:all .2s" onclick="BOS.jumpToSlide(${i})"></div>`;
+h+=`<div style="width:8px;height:8px;border-radius:50%;${active};cursor:pointer;transition:all .2s;min-width:8px" onclick="BOS.jumpToSlide(${i})"></div>`;
 }
 if(curr>=15&&curr<total-5){
-h+=`<span style="color:var(--txt2);margin:0 .25rem">...</span>`;
+h+=`<span style="color:var(--txt2);margin:0 .2rem">…</span>`;
 for(let i=Math.max(15,curr-2);i<=Math.min(total-6,curr+2);i++){
 const active=i===curr?'background:var(--p);width:12px;height:12px':'background:var(--bord);width:8px;height:8px';
 h+=`<div style="border-radius:50%;${active};cursor:pointer;transition:all .2s" onclick="BOS.jumpToSlide(${i})"></div>`;
 }
-h+=`<span style="color:var(--txt2);margin:0 .25rem">...</span>`;
+h+=`<span style="color:var(--txt2);margin:0 .2rem">…</span>`;
 }else if(curr<15&&total>20){
-h+=`<span style="color:var(--txt2);margin:0 .25rem">...</span>`;
+h+=`<span style="color:var(--txt2);margin:0 .2rem">…</span>`;
 }
 if(total>15){
 for(let i=Math.max(15,total-5);i<total;i++){
 const active=i===curr?'background:var(--p)':'background:var(--bord)';
-h+=`<div style="width:8px;height:8px;border-radius:50%;${active};cursor:pointer;transition:all .2s" onclick="BOS.jumpToSlide(${i})"></div>`;
+h+=`<div style="width:8px;height:8px;border-radius:50%;${active};cursor:pointer;transition:all .2s;min-width:8px" onclick="BOS.jumpToSlide(${i})"></div>`;
 }
 }
-h+=`<span style="color:var(--txt2);margin-left:.5rem;font-size:.875rem">${curr+1}/${total}</span>`;
+h+=`<span style="color:var(--txt2);margin-left:.5rem;font-size:.8rem">${curr+1}/${total}</span>`;
 h+='</div>';
-h+=`<button class="btn" onclick="BOS.nextSlide()" ${this.currentSlide===this.slides.length-1?'disabled':''}>Next →</button>`;
+// Row 2: Prev / Next buttons — large touch targets, centred, always visible
+h+='<div style="display:flex;justify-content:center;align-items:center;gap:1rem;padding-bottom:.75rem">';
+h+=`<button class="btn" onclick="BOS.prevSlide()" style="min-width:110px;padding:.6rem 1.25rem" ${curr===0?'disabled':''}>← Previous</button>`;
+h+=`<button class="btn" onclick="BOS.nextSlide()" style="min-width:110px;padding:.6rem 1.25rem" ${curr===total-1?'disabled':''}>Next →</button>`;
+h+='</div>';
 h+='</div>';
 
 h+='</div>';
@@ -10457,7 +10473,7 @@ let h=`<div style="margin-bottom:1.5rem;display:flex;gap:.75rem;align-items:cent
 <input type="date" class="form-input" id="rep-adv-to" style="width:auto" value="${today}">
 </div>
 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:2rem">
-${reports.map(r=>`<div style="background:var(--card);padding:1.25rem;border-radius:var(--rad);border-left:4px solid ${r.color};cursor:pointer;transition:.15s" onclick="BOS._runReport('${r.id}')" onmouseover="this.style.boxShadow='var(--sh)'" onmouseout="this.style.boxShadow='none'">
+${reports.map(r=>`<div id="rep-card-${r.id}" data-repid="${r.id}" style="background:var(--card);padding:1.25rem;border-radius:var(--rad);border-left:4px solid ${r.color};cursor:pointer;transition:.15s" onclick="BOS._runReport('${r.id}',this)" onmouseover="if(!this.classList.contains('rep-active'))this.style.boxShadow='var(--sh)'" onmouseout="if(!this.classList.contains('rep-active'))this.style.boxShadow='none'">
 <div style="font-size:1.75rem;margin-bottom:.5rem">${r.icon}</div>
 <div style="font-weight:700;margin-bottom:.35rem">${r.title}</div>
 <div style="font-size:.8rem;color:var(--txt2);line-height:1.5">${r.desc}</div>
@@ -10468,12 +10484,27 @@ ${reports.map(r=>`<div style="background:var(--card);padding:1.25rem;border-radi
 document.getElementById('exp-body').innerHTML=h;
 }
 
-static _runReport(id){
+static _runReport(id,cardEl){
 const from=document.getElementById('rep-adv-from')?.value||'';
 const to=document.getElementById('rep-adv-to')?.value||new Date().toISOString().split('T')[0];
 const sym=this.cfg.sym||'$';
 const out=document.getElementById('adv-report-output');
 if(!out)return;
+// Toggle: clicking active report collapses it
+const wasActive=cardEl&&cardEl.classList.contains('rep-active');
+// Reset all cards
+document.querySelectorAll('[data-repid]').forEach(el=>{
+  el.classList.remove('rep-active');
+  el.style.boxShadow='none';
+  el.style.outline='none';
+});
+if(wasActive){out.innerHTML='';return;} // collapse
+// Activate clicked card
+if(cardEl){
+  cardEl.classList.add('rep-active');
+  cardEl.style.outline='2px solid var(--p)';
+  cardEl.style.boxShadow='0 0 0 4px rgba(var(--p-rgb,99,102,241),.15)';
+}
 
 if(id==='aged'){
 const today=new Date(to);
@@ -10681,6 +10712,15 @@ h+=`<div class="row" style="grid-template-columns:1fr 2fr 2fr 1fr;align-items:ce
 h+='</div>';}
 h+='</div>';
 out.innerHTML=h;
+// Scroll exp-body so output appears immediately below the card grid
+setTimeout(()=>{
+  const expBody=document.getElementById('exp-body');
+  const outEl=document.getElementById('adv-report-output');
+  if(expBody&&outEl){
+    const offset=outEl.offsetTop-expBody.offsetTop-16;
+    expBody.scrollTo({top:Math.max(0,offset),behavior:'smooth'});
+  }
+},30);
 }
 }
 
