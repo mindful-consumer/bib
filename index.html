@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BiBBOS v6.2 — Business in a Box</title>
+<title>BiBBOS v6.3 — Business in a Box</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏢</text></svg>">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
@@ -513,7 +513,7 @@ vesselId:VesselManager.currentVesselId||('vessel_genesis_'+Date.now()),
 vesselName:cfg.name,
 commissionedAt:new Date().toISOString(),
 loc:cfg.loc||'',
-bibVersion:'6.2.0',
+bibVersion:'6.3.0',
 ancestryChain:parentChain,
 // Immutable fingerprint: hash of name+date for mesh identification
 fingerprint:btoa(encodeURIComponent((cfg.name||'')+new Date().toISOString().split('T')[0])).substring(0,16)
@@ -586,7 +586,7 @@ localStorage.setItem(VesselManager.currentVesselId+'_'+key,JSON.stringify(value)
 
 // BUSINESS OPERATING SYSTEM
 class BOS{
-static v='6.2';
+static v='6.3';
 static cfg={};static people=[];static prod=[];static inv=[];static po=[];static quotes=[];static recurring=[];static credits=[];
 static employees=[];static timesheets=[];static jobLogs=[];static encounters=[];static payrollRuns=[];static punches=[];
 static deliveries=[];static campaigns=[];static touchpoints=[];
@@ -2261,11 +2261,45 @@ sku:document.getElementById('pr-sku').value,qty:parseInt(document.getElementById
 cost:parseFloat(document.getElementById('pr-cost').value),price:parseFloat(document.getElementById('pr-price').value),
 market:parseFloat(document.getElementById('pr-market').value)||0,reorder:parseInt(document.getElementById('pr-reorder').value)||0,
 taxExempt:document.getElementById('pr-taxexempt').checked};
+p.stockHistory=[{date:new Date().toISOString().split('T')[0],delta:p.qty,balance:p.qty,type:'opening',ref:'OPEN'}];
 this.prod.push(p);
 this.log('success','Product added: '+p.name+' (SKU: '+(p.sku||'N/A')+')');
 }
 this.save();
 this.rInv();
+this.updCards();
+}
+
+// ══════════════════════════════════════════════════════════════
+// v6.3 — STOCK HISTORY FOUNDATION
+// Every stock movement appends a dated entry to product.stockHistory.
+// This is the training data for TF.js intelligence (v6.4).
+// Entry: { date, qty (signed delta), balance, type, ref }
+// ══════════════════════════════════════════════════════════════
+
+static _appendStockHistory(prod, type, delta, ref){
+if(!prod)return;
+if(!prod.stockHistory)prod.stockHistory=[];
+prod.stockHistory.push({
+date:new Date().toISOString().split('T')[0],
+delta,                          // signed: negative=sale, positive=purchase/adjustment
+balance:prod.qty,               // balance AFTER change (qty already mutated before call)
+type,                           // 'sale' | 'purchase' | 'adjustment' | 'opening'
+ref:ref||''                     // invoice/PO number for traceability
+});
+// Cap history at 730 entries per product (~2 years daily) to avoid bloat
+if(prod.stockHistory.length>730)prod.stockHistory.shift();
+}
+
+static adjustStock(prodId,delta,reason){
+// Manual stock adjustment — available from inventory detail
+const prod=this.prod.find(p=>p.id===prodId);
+if(!prod){this.log('warning','Product not found');return;}
+const before=prod.qty;
+prod.qty=Math.max(0,prod.qty+delta);
+this._appendStockHistory(prod,'adjustment',prod.qty-before,'ADJ-'+reason);
+this.save();
+this.log('success',`Stock adjusted: ${prod.name} ${before} → ${prod.qty}`);
 this.updCards();
 }
 
@@ -2460,6 +2494,7 @@ if(item.pid){
 const prod=this.prod.find(p=>p.id===item.pid);
 if(prod){
 prod.qty-=item.qty;
+this._appendStockHistory(prod,'sale',-item.qty,i.num);
 this.log('info','Reduced stock: '+prod.name+' by '+item.qty+' (now '+prod.qty+')');
 }
 }
@@ -3176,6 +3211,7 @@ if(item.pid){
 const prod=this.prod.find(pr=>pr.id===item.pid);
 if(prod){
 prod.qty=(prod.qty||0)+item.qty;
+this._appendStockHistory(prod,'purchase',item.qty,p.num);
 this.log('info','Increased stock: '+prod.name+' by '+item.qty+' (now '+prod.qty+')');
 }
 }
@@ -12274,7 +12310,7 @@ if((e.ctrlKey||e.metaKey)&&e.key==='l'){e.preventDefault();BOS.toggleLog();}
 });
 document.addEventListener('click',e=>{if(!e.target.closest('.bar-acts'))document.getElementById('theme-menu').classList.remove('show');});
 
-console.log('%c🏢 BiBBOS v6.2 — Business in a Box','font-size:20px;font-weight:bold;color:#E95420');
+console.log('%c🏢 BiBBOS v6.3 — Business in a Box','font-size:20px;font-weight:bold;color:#E95420');
 console.log('%cMulti-Vessel · Sovereign Lineage · v'+BOS.v,'font-style:italic;color:#77216F');
 console.log('%c"The vessel is complete. The knowledge is embedded. The sovereignty is yours."','font-style:italic;color:#2E7D32');
 </script>
