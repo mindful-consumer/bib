@@ -1350,7 +1350,7 @@ e.innerHTML='<div style="background:var(--bg);padding:1rem;border-radius:8px;mar
 ).join('')+
 '</div></div>'+
 '<div style="font-size:1.125rem;font-weight:600;margin:2rem 0 1rem">'+_w.struct+'</div><div>'+
-[[_w.s1,'sole'],[_w.s2,'partnership'],[_w.s3,'llc'],[_w.s4,'corp'],[_w.s5,'other']].map(([l,v])=>
+[[_w.s1,'sole_proprietorship'],[_w.s2,'partnership'],[_w.s3,'llc'],[_w.s4,'corporation'],[_w.s5,'other']].map(([l,v])=>
 `<div class="opt" onclick="BOS.wizSel(this,'structure','${v}')">${l}</div>`
 ).join('')+'</div>'+
 '<div style="font-size:1.125rem;font-weight:600;margin:2rem 0 1rem">'+_w.does+'</div><div>'+
@@ -1420,11 +1420,11 @@ JM:{n:'Jamaica',c:'JMD',s:'J$',t:15},LC:{n:'Saint Lucia',c:'XCD',s:'EC$',t:12.5}
 US:{n:'United States',c:'USD',s:'$',t:0},
 OT:{n:this.t('wizard.step3')==='Locatie'?'Wereldwijd':this.t('wizard.step3')==='Ubicación'?'Global':this.t('wizard.step3')==='Localisation'?'Mondial':'Global',c:'USD',s:'$',t:0}}[this.wizD.loc];
 const structureMap={
-EN:{sole:'Sole Proprietorship',partnership:'Partnership',llc:'LLC',corp:'Corporation',other:'Other'},
-NL:{sole:'Eenmanszaak',partnership:'Maatschap',llc:'LLC',corp:'Vennootschap',other:'Anders'},
-ES:{sole:'Empresa Individual',partnership:'Sociedad',llc:'LLC',corp:'Corporación',other:'Otro'},
-FR:{sole:'Entreprise Individuelle',partnership:'Partenariat',llc:'LLC',corp:'Société',other:'Autre'},
-HI:{sole:'एकल स्वामित्व',partnership:'साझेदारी',llc:'LLC',corp:'निगम',other:'अन्य'}
+EN:{sole_proprietorship:'Sole Proprietorship',partnership:'Partnership',llc:'LLC',corporation:'Corporation',other:'Other'},
+NL:{sole_proprietorship:'Eenmanszaak',partnership:'Maatschap',llc:'LLC',corporation:'Vennootschap',other:'Anders'},
+ES:{sole_proprietorship:'Empresa Individual',partnership:'Sociedad',llc:'LLC',corporation:'Corporación',other:'Otro'},
+FR:{sole_proprietorship:'Entreprise Individuelle',partnership:'Partenariat',llc:'LLC',corporation:'Société',other:'Autre'},
+HI:{sole_proprietorship:'एकल स्वामित्व',partnership:'साझेदारी',llc:'LLC',corporation:'निगम',other:'अन्य'}
 };
 const lang=this.cfg.lang||'EN';
 const structureLabels=structureMap[lang]||structureMap.EN;
@@ -2093,12 +2093,13 @@ const tab=`<div class="tab-bar">
 </div>`;
 let h=tab+'<div style="background:var(--card);padding:2rem;border-radius:var(--rad);box-shadow:var(--sh);margin-bottom:2rem"><h3 style="margin-bottom:1.5rem">Add Customer</h3>'+
 '<form onsubmit="event.preventDefault();BOS.savePerson(\'customer\')">'+
-'<div class="form-group"><label class="form-label" for="p-name">Name *</label><input class="form-input" id="p-name" name="person-name" required></div>'+
+'<div class="form-group"><label class="form-label" for="p-name">Customer Name *</label><input class="form-input" id="p-name" name="person-name" placeholder="e.g. Castries Trading Co · Hotel Jalousie · Maria Joseph" required></div>'+
 '<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">'+
-'<div class="form-group"><label class="form-label" for="p-email">Email</label><input class="form-input" type="email" id="p-email" name="person-email"></div>'+
-'<div class="form-group"><label class="form-label" for="p-phone">Phone</label><input class="form-input" id="p-phone" name="person-phone"></div>'+
+'<div class="form-group"><label class="form-label" for="p-email">Email</label><input class="form-input" type="email" id="p-email" name="person-email" placeholder="e.g. orders@castries-trading.lc"></div>'+
+'<div class="form-group"><label class="form-label" for="p-phone">Phone</label><input class="form-input" id="p-phone" name="person-phone" placeholder="e.g. +1-758-452-1234"></div>'+
 '</div>'+
-'<div class="form-group"><label class="form-label" for="p-addr">Address</label><textarea class="form-textarea" id="p-addr" name="person-addr"></textarea></div>'+
+'<div class="form-group"><label class="form-label" for="p-addr">Address</label><textarea class="form-textarea" id="p-addr" name="person-addr" placeholder="Street, Town, Parish — used on invoices and delivery notes"></textarea></div>'+
+'<div class="form-group"><label class="form-label" for="p-notes">Account Notes</label><textarea class="form-textarea" id="p-notes" name="person-notes" placeholder="e.g. Net 30 terms · Wholesale rate · Preferred delivery Tue/Thu · Do not call after 5pm"></textarea></div>'+
 '<div style="display:flex;gap:1rem"><button class="btn" type="submit">💾 Save Customer</button><button class="btn btn-sec" type="button" onclick="BOS._guardNav(()=>{BOS.clearPersonForm();BOS.editingPerson=null;})">Cancel</button></div></form></div>';
 const cust=this.people.filter(x=>x.type==='customer');
 h+='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;margin-bottom:1rem"><h3>Customer Database</h3>';
@@ -2138,13 +2139,14 @@ const tab=`<div class="tab-bar">
 </div>`;
 let h=tab+'<div style="background:var(--card);padding:2rem;border-radius:var(--rad);box-shadow:var(--sh);margin-bottom:2rem"><h3 style="margin-bottom:1.5rem">Add Vendor/Supplier</h3>'+
 '<form onsubmit="event.preventDefault();BOS.savePerson(\'vendor\')">'+
-'<div class="form-group"><label class="form-label" for="p-name">Company Name *</label><input class="form-input" id="p-name" name="vendor-name" required></div>'+
-'<div class="form-group"><label class="form-label" for="p-contact">Contact Person</label><input class="form-input" id="p-contact" name="vendor-contact" placeholder="e.g., Jane Smith"></div>'+
+'<div class="form-group"><label class="form-label" for="p-name">Company / Supplier Name *</label><input class="form-input" id="p-name" name="vendor-name" placeholder="e.g. Caribbean Wholesale Distributors · Massy Distribution · Local Farm Co-op" required></div>'+
+'<div class="form-group"><label class="form-label" for="p-contact">Contact Person</label><input class="form-input" id="p-contact" name="vendor-contact" placeholder="e.g. James Phillip — your sales rep or account manager"></div>'+
 '<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">'+
-'<div class="form-group"><label class="form-label" for="p-email">Contact Email</label><input class="form-input" type="email" id="p-email" name="vendor-email"></div>'+
-'<div class="form-group"><label class="form-label" for="p-phone">Phone</label><input class="form-input" id="p-phone" name="person-phone"></div>'+
+'<div class="form-group"><label class="form-label" for="p-email">Contact Email</label><input class="form-input" type="email" id="p-email" name="vendor-email" placeholder="e.g. sales@supplier.com"></div>'+
+'<div class="form-group"><label class="form-label" for="p-phone">Phone</label><input class="form-input" id="p-phone" name="person-phone" placeholder="e.g. +1-758-452-7000"></div>'+
 '</div>'+
-'<div class="form-group"><label class="form-label" for="p-addr">Address</label><textarea class="form-textarea" id="p-addr" name="person-addr"></textarea></div>'+
+'<div class="form-group"><label class="form-label" for="p-addr">Address / Location</label><textarea class="form-textarea" id="p-addr" name="person-addr" placeholder="Warehouse or office address — helps with delivery scheduling"></textarea></div>'+
+'<div class="form-group"><label class="form-label" for="p-notes">Supplier Notes</label><textarea class="form-textarea" id="p-notes" name="vendor-notes" placeholder="e.g. Minimum order EC$500 · Delivers Wed/Fri · 30-day credit · Ask for James for priority orders"></textarea></div>'+
 '<div style="display:flex;gap:1rem"><button class="btn" type="submit">💾 Save Vendor</button><button class="btn btn-sec" type="button" onclick="BOS._guardNav(()=>{BOS.clearPersonForm();BOS.editingPerson=null;})">Cancel</button></div></form></div>';
 const vend=this.people.filter(x=>x.type==='vendor');
 h+='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;margin-bottom:1rem"><h3>Vendor Database</h3>';
@@ -2175,14 +2177,18 @@ p.email=document.getElementById('p-email').value;
 p.phone=document.getElementById('p-phone').value;
 p.address=document.getElementById('p-addr').value;
 if(contactEl)p.contact=contactEl.value;
+const _notesEl=document.getElementById('p-notes');
+if(_notesEl)p.notes=_notesEl.value;
 this.log('info',(type==='customer'?'Customer':'Vendor')+' updated: '+oldName+' → '+p.name);
 this.editingPerson=null;
 }else{
 // Create new person
+const notesEl=document.getElementById('p-notes');
 const p={id:this.nxt.p++,type,name:document.getElementById('p-name').value,
 contact:contactEl?contactEl.value:'',
 email:document.getElementById('p-email').value,phone:document.getElementById('p-phone').value,
-address:document.getElementById('p-addr').value};
+address:document.getElementById('p-addr').value,
+notes:notesEl?notesEl.value:''};
 this.people.push(p);
 this.log('success',(type==='customer'?'Customer':'Vendor')+' added: '+p.name);
 }
@@ -2202,6 +2208,7 @@ document.getElementById('p-email').value=p.email||'';
 document.getElementById('p-phone').value=p.phone||'';
 document.getElementById('p-addr').value=p.address||'';
 const ce=document.getElementById('p-contact');if(ce)ce.value=p.contact||'';
+const ne=document.getElementById('p-notes');if(ne)ne.value=p.notes||'';
 // Scroll to form
 document.querySelector('.exp-body').scrollTop=0;
 this.log('info','Editing '+(type==='customer'?'customer':'vendor')+': '+p.name);
@@ -2213,6 +2220,7 @@ document.getElementById('p-email').value='';
 document.getElementById('p-phone').value='';
 document.getElementById('p-addr').value='';
 const c=document.getElementById('p-contact');if(c)c.value='';
+const n=document.getElementById('p-notes');if(n)n.value='';
 }
 
 static clearProductForm(){
@@ -2258,16 +2266,16 @@ static rInv(){
 let h='<div style="background:var(--card);padding:2rem;border-radius:var(--rad);box-shadow:var(--sh);margin-bottom:2rem"><h3 style="margin-bottom:1.5rem">Add Product/Service</h3>'+
 '<form onsubmit="event.preventDefault();BOS.saveProd()">'+
 '<div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:1rem">'+
-'<div class="form-group"><label class="form-label" for="pr-name">Name *</label><input class="form-input" id="pr-name" name="product-name" required></div>'+
-'<div class="form-group"><label class="form-label" for="pr-sku">SKU</label><input class="form-input" id="pr-sku" name="product-sku"></div>'+
-'<div class="form-group"><label class="form-label" for="pr-qty">Quantity</label><input class="form-input" type="number" id="pr-qty" name="product-qty" value="0"></div>'+
+'<div class="form-group"><label class="form-label" for="pr-name">Product / Service Name *</label><input class="form-input" id="pr-name" name="product-name" placeholder="e.g. Rice 25kg · Cooking Oil 5L · Delivery Service · Consulting Hour" required></div>'+
+'<div class="form-group"><label class="form-label" for="pr-sku">SKU / Code</label><input class="form-input" id="pr-sku" name="product-sku" placeholder="e.g. RICE-25 · OIL-5L · SVC-01"></div>'+
+'<div class="form-group"><label class="form-label" for="pr-qty">Opening Stock</label><input class="form-input" type="number" id="pr-qty" name="product-qty" value="0" placeholder="0 — units on hand right now"></div>'+
 '</div>'+
 '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem">'+
-'<div class="form-group"><label class="form-label" for="pr-cost">Cost ('+(this.cfg.sym||'$')+') *</label><input class="form-input" type="number" step="0.01" id="pr-cost" name="product-cost" required></div>'+
-'<div class="form-group"><label class="form-label" for="pr-price">Sell Price ('+(this.cfg.sym||'$')+') *</label><input class="form-input" type="number" step="0.01" id="pr-price" name="product-price" required></div>'+
-'<div class="form-group"><label class="form-label" for="pr-market">Market Price</label><input class="form-input" type="number" step="0.01" id="pr-market" name="product-market"></div>'+
+'<div class="form-group"><label class="form-label" for="pr-cost">Cost ('+(this.cfg.sym||'$')+') *</label><input class="form-input" type="number" step="0.01" id="pr-cost" name="product-cost" placeholder="What you pay — used for COGS & margin" required></div>'+
+'<div class="form-group"><label class="form-label" for="pr-price">Selling Price ('+(this.cfg.sym||'$')+') *</label><input class="form-input" type="number" step="0.01" id="pr-price" name="product-price" placeholder="Your invoice price to customers" required></div>'+
+'<div class="form-group"><label class="form-label" for="pr-market">Market / RRP Price</label><input class="form-input" type="number" step="0.01" id="pr-market" name="product-market" placeholder="Competitor or recommended retail — for margin analysis"></div>'+
 '</div>'+
-'<div class="form-group"><label class="form-label" for="pr-reorder">Reorder Level</label><input class="form-input" type="number" id="pr-reorder" name="product-reorder" value="0"></div>'+
+'<div class="form-group"><label class="form-label" for="pr-reorder">Reorder Point</label><input class="form-input" type="number" id="pr-reorder" name="product-reorder" value="0" placeholder="Alert when stock falls to this level — e.g. 10"></div>'+
 '<div class="form-group"><label class="form-label" style="display:flex;align-items:center;gap:.5rem"><input type="checkbox" id="pr-taxexempt" style="width:auto"> Tax Exempt (VAT/Sales Tax)</label></div>'+
 '<div style="display:flex;gap:1rem\"><button class="btn" type="submit">💾 Save Item</button><button class="btn btn-sec" type="button" onclick="BOS.clearProductForm();BOS.editingProduct=null">Cancel</button></div></form></div>'+
 '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;margin-bottom:1rem">'+
@@ -2783,6 +2791,7 @@ po.vendName=v.name;
 po.date=dt;
 po.items=items;
 po.total=tot;
+po.notes=document.getElementById('po-notes')?.value||po.notes||'';
 if(!po.editHistory)po.editHistory=[];
 po.editHistory.push({timestamp:new Date().toISOString(),by:'Steward',changes:'PO updated'});
 this._dirtyReset();
@@ -2817,6 +2826,7 @@ h+='</div><button class="btn btn-sec" type="button" onclick="BOS.addItem()" styl
 '<div style="display:flex;justify-content:space-between;margin-top:.75rem;padding-top:.75rem;border-top:1px dashed var(--bord);color:var(--txt2);font-size:.9rem"><span>≈ '+(this.cfg.secondaryCur)+' equivalent:</span><span id="tot-secondary" style="font-weight:600;color:var(--info)">'+(this.cfg.secondarySym||'')+'0.00</span></div>'+
 '<div style="font-size:.75rem;color:var(--txt2);margin-top:.25rem">Rate: 1 '+(this.cfg.cur||'')+'= '+(this.cfg.exchangeRate)+' '+(this.cfg.secondaryCur)+(this.cfg.exchangeRateDate?' · '+this.cfg.exchangeRateDate:'')+'</div>'
 :'')+
+'<div class="form-group"><label class="form-label" for="inv-notes">Invoice Notes / Terms</label><textarea class="form-textarea" id="inv-notes" name="inv-notes" style="min-height:60px" placeholder="e.g. Payment due 30 days from invoice date · Goods remain property of seller until paid · Reference PO-1042"></textarea></div>'+
 '</div><div style="display:flex;gap:1rem"><button class="btn" type="submit">💾 Save Invoice</button><button class="btn" type="button" onclick="BOS.rSales()">Cancel</button></div></form></div>';
 document.getElementById('exp-body').innerHTML=h;
 document.getElementById('inv-date').valueAsDate=new Date();
@@ -2840,6 +2850,7 @@ h+=this.poItem(0);
 h+='</div><button class="btn btn-sec" type="button" onclick="BOS.addItem()" style="margin:1rem 0">➕ Add Item</button>'+
 '<div style="background:var(--bg);padding:1.5rem;border-radius:8px;margin:2rem 0">'+
 '<div style="display:flex;justify-content:space-between;font-size:1.25rem;font-weight:700;color:var(--p)"><span>Total:</span><span id="tot">'+(this.cfg.sym||'$')+'0.00</span></div>'+
+'<div class="form-group"><label class="form-label" for="po-notes">Order Notes / Instructions</label><textarea class="form-textarea" id="po-notes" name="po-notes" style="min-height:60px" placeholder="e.g. Deliver to warehouse entrance · Call James on arrival · Partial delivery acceptable · Urgent — needed by Friday"></textarea></div>'+
 '</div><div style="display:flex;gap:1rem"><button class="btn" type="submit">💾 Save PO</button><button class="btn" type="button" onclick="BOS.rPO()">Cancel</button></div></form></div>';
 document.getElementById('exp-body').innerHTML=h;
 document.getElementById('po-date').valueAsDate=new Date();
@@ -3172,15 +3183,17 @@ if(this.editingItem){
 // Update existing invoice
 const oldStatus=this.editingItem.status;
 const oldTotal=this.editingItem.total;
-Object.assign(this.editingItem,{cid,custName:c.name,date:dt,items,sub,tax:tx,taxRate:this.cfg.tax||0,shipping,total:tot,cur:this.cfg.cur,sym:this.cfg.sym});
+const _eInvNotes=document.getElementById('inv-notes')?.value||'';
+Object.assign(this.editingItem,{cid,custName:c.name,date:dt,items,sub,tax:tx,taxRate:this.cfg.tax||0,shipping,total:tot,cur:this.cfg.cur,sym:this.cfg.sym,notes:_eInvNotes});
 this.log('success','Invoice '+this.editingItem.num+' updated (Status: '+oldStatus+', Total: '+this.cfg.sym+this.fmt(oldTotal)+' → '+this.cfg.sym+this.fmt(tot)+')');
 }else{
 // Create new invoice
 const _secTotal=this.cfg.secondaryCur&&this.cfg.exchangeRate?tot*this.cfg.exchangeRate:null;
+const _invNotes=document.getElementById('inv-notes')?.value||'';
 const inv={id:Date.now(),num:'INV-'+this.nxt.i++,cid,custName:c.name,date:dt,items,sub,tax:tx,
 taxRate:this.cfg.tax||0,shipping,total:tot,cur:this.cfg.cur,sym:this.cfg.sym,status:'draft',
 secondaryCur:this.cfg.secondaryCur||null,secondarySym:this.cfg.secondarySym||null,
-secondaryTotal:_secTotal,exchangeRate:this.cfg.exchangeRate||null};
+secondaryTotal:_secTotal,exchangeRate:this.cfg.exchangeRate||null,notes:_invNotes};
 this.inv.push(inv);
 // Auto-post shipping to journal if accounting active and shipping charged
 if(shipping>0&&this.accountingMode){
@@ -3216,6 +3229,8 @@ this.newInv();
 document.getElementById('inv-cust').value=inv.cid||'';
 document.getElementById('inv-date').value=inv.date||'';
 if(document.getElementById('inv-shipping'))document.getElementById('inv-shipping').value=inv.shipping||0;
+const _invNotesEl=document.getElementById('inv-notes');
+if(_invNotesEl)_invNotesEl.value=inv.notes||'';
 // Populate line items
 document.getElementById('items').innerHTML='';
 (inv.items||[]).forEach(item=>{
@@ -3393,8 +3408,9 @@ return;
 }
 
 const tot=items.reduce((s,i)=>s+i.amt,0);
+const _poNotes=document.getElementById('po-notes')?.value||'';
 const po={id:Date.now(),num:'PO-'+this.nxt.po++,vid,vendName:v.name,date:dt,items,total:tot,
-cur:this.cfg.cur,sym:this.cfg.sym,status:'draft'};
+cur:this.cfg.cur,sym:this.cfg.sym,status:'draft',notes:_poNotes};
 this.po.push(po);
 this._dirtyReset();
 this.save();
