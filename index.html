@@ -72,7 +72,7 @@ body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--txt);line
 .exp{position:fixed;top:0;left:0;right:0;bottom:0;background:var(--bg);z-index:1500;display:none;flex-direction:column}
 .exp.show{display:flex}
 .exp-hdr{padding:1rem 2rem;background:var(--card);border-bottom:2px solid var(--p);box-shadow:var(--sh);display:flex;gap:1rem;align-items:center}
-.exp-body{flex:1;overflow-y:auto;padding:2rem}
+.exp-body{flex:1;overflow-y:auto;padding:2rem;scroll-behavior:smooth}
 .tbl{background:var(--card);border-radius:var(--rad);overflow:hidden;box-shadow:var(--sh);margin:1rem 0}
 .row{display:grid;gap:1rem;padding:1rem 1.5rem;border-bottom:1px solid var(--bord);align-items:center}
 .row:hover:not(.hdr){background:var(--bg)}
@@ -141,13 +141,53 @@ to{opacity:1;transform:translateY(0)}
 /* Sovereignty Score Badge */
 .sov-badge{display:inline-flex;align-items:center;gap:.5rem;background:var(--succ);color:#FFF;padding:.4rem 1.2rem;border-radius:50px;font-weight:700;font-size:.875rem;margin-top:.75rem}
 @media(max-width:768px){
+/* Layout */
 .bar-grid{grid-template-columns:1fr;gap:.75rem}
 .bar-metrics{flex-wrap:wrap;gap:1rem}
 .surface{grid-template-columns:1fr;padding:1rem}
+/* Tables */
 .row{grid-template-columns:1fr;gap:.5rem}
 .row.hdr{display:none}
 .row>div:last-child{display:flex;flex-wrap:wrap;gap:.25rem}
+/* Buttons */
 .btn{font-size:.75rem;padding:.4rem .6rem}
+/* Exp panel — full viewport, always scrolls from top */
+.exp-body{padding:1rem}
+.exp-hdr{padding:.75rem 1rem;gap:.5rem}
+/* Forms — all grids collapse to single column */
+.form-group,[style*="grid-template-columns:1fr 1fr"],[style*="grid-template-columns:1fr 1fr 1fr"]{
+  grid-template-columns:1fr!important
+}
+/* Danger Zone and any 3-col grid */
+div[style*="grid-template-columns:1fr 1fr 1fr"]{grid-template-columns:1fr!important}
+div[style*="grid-template-columns:1fr 1fr"]{grid-template-columns:1fr!important}
+/* Report card grids */
+div[style*="grid-template-columns:repeat(3"]{grid-template-columns:1fr!important}
+div[style*="grid-template-columns:repeat(4"]{grid-template-columns:repeat(2,1fr)!important}
+div[style*="grid-template-columns:repeat(2"]{grid-template-columns:1fr!important}
+/* Icon picker — 4 cols on mobile instead of 8 */
+#prof-icon-grid{grid-template-columns:repeat(4,1fr)!important}
+/* Tab bars — wrap and shrink */
+.tab-bar{flex-wrap:wrap;gap:.25rem}
+.tab-btn{font-size:.7rem;padding:.35rem .6rem;flex:1 1 auto;text-align:center}
+/* Invoice/PO item rows — stack */
+div[style*="grid-template-columns:3fr 1fr 1fr 1fr auto"]{grid-template-columns:1fr!important}
+/* Totals section alignment */
+div[style*="justify-content:flex-end"]{justify-content:stretch!important}
+div[style*="width:280px"]{width:100%!important}
+/* Modal boxes */
+.modal-box{max-width:95vw!important;padding:1.25rem!important}
+/* Aged receivables buckets */
+div[style*="grid-template-columns:repeat(4,1fr)"]{grid-template-columns:repeat(2,1fr)!important}
+/* Profile / company screen selects */
+div[style*="grid-template-columns:1fr 1fr 1fr;gap:1rem"]{grid-template-columns:1fr!important}
+/* Prevent horizontal overflow globally */
+.exp-body *{max-width:100%;box-sizing:border-box}
+}
+@media(max-width:480px){
+.bar-metrics .metric{flex:1 1 calc(50% - .5rem)}
+.tab-btn{font-size:.65rem;padding:.3rem .4rem}
+div[style*="grid-template-columns:repeat(4"]{grid-template-columns:1fr!important}
 }
 </style>
 </head>
@@ -1561,6 +1601,9 @@ this.updCards();this.updMetrics();
 static open(c){
 this.cur=c;
 document.getElementById('exp').classList.add('show');
+// Always scroll to top of panel when opening any screen
+const expBody=document.getElementById('exp-body');
+if(expBody)expBody.scrollTop=0;
 document.getElementById('exp-title').textContent=c.charAt(0).toUpperCase()+c.slice(1);
 this.log('info','Opened '+c+' card');
 if(c==='people')this.rPeople();
@@ -4843,6 +4886,9 @@ this.rAccountingTab('coa');
 }
 
 static rAccountingTab(tab){
+// Scroll content area to top on every tab switch
+const _eb=document.getElementById('exp-body');
+if(_eb)_eb.scrollTop=0;
 const tabs=['coa','journal','ledger','reports','opening','recon'];
 tabs.forEach(t=>{
 const el=document.getElementById('tab-'+t);
@@ -11905,17 +11951,39 @@ this.confirm(
 `⚠️ This will REPLACE all current data in this vessel.\n`+
 `Make sure you've exported current data first if needed.`,
 ()=>{
-// Restore all data
+// Restore all data — full module coverage matching load()
 this.cfg=data.config;
 this.people=data.people||[];
 this.prod=data.products||[];
 this.inv=data.invoices||[];
 this.po=data.purchaseOrders||[];
-this.accounts=data.accounts||[];
-this.journalEntries=data.journalEntries||[];
-this.ledger=data.ledger||{};
+this.quotes=data.quotes||[];
+this.recurring=data.recurring||[];
+this.credits=data.credits||[];
+this.employees=data.employees||[];
+this.timesheets=data.timesheets||[];
+this.payrollRuns=data.payrollRuns||[];
+this.punches=data.punches||[];
+this.deliveries=data.deliveries||[];
+this.campaigns=data.campaigns||[];
+this.touchpoints=data.touchpoints||[];
+this.jobLogs=data.jobLogs||[];
+this.encounters=data.encounters||[];
 this.logs=data.logs||[];
-this.nxt=data.nextIds||{p:1,pr:1,i:1001,po:1001,je:1};
+this.nxt=data.nextIds||{p:1,pr:1,i:1001,po:1001,je:1,q:1001,cn:1001,emp:1001,pay:1};
+// Accounting — init fresh if no accounts in backup
+if(data.accounts&&data.accounts.length){
+  this.accounts=data.accounts;
+  this.journalEntries=data.journalEntries||[];
+  this.ledger=data.ledger||{};
+  this.accountingMode=true;
+  this.rebuildLedger();
+}else{
+  this.accounts=[];
+  this.journalEntries=[];
+  this.ledger={};
+  this.initializeAccounts(); // fresh COA, sets accountingMode=true
+}
 
 // Save to localStorage
 this.save();
