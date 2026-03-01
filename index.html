@@ -6756,7 +6756,7 @@ Business in a Box: $0<br>Forever
 </div>`}
 ,
 
-// PART 3: PRACTICAL USAGE - Using This Vessel (Slides 22-35)
+// PART 3: PRACTICAL USAGE - Using This Vessel (Slides 22-40)
 {n:22,title:'Managing Customers & Vendors',subtitle:'The People Module',content:`
 <div style="padding:2rem">
 <h2 style="text-align:center;color:var(--p);margin-bottom:3rem">Your Business Relationships</h2>
@@ -7031,12 +7031,20 @@ Business in a Box: $0<br>Forever
 </div>
 </div>`},
 
-// PART 4: ADVANCED TOPICS (Slides 32-35)
+// PART 4: ADVANCED FEATURES (Slides 41-51)
 {n:32,title:'Tax Compliance',subtitle:'Regional Support',content:`
 <div style="padding:2rem">
 <h2 style="text-align:center;color:var(--p);margin-bottom:2rem">Built-In Tax Intelligence</h2>
 <div style="background:var(--bg);padding:1.5rem;border-radius:var(--rad)">
-<p style="color:var(--txt2)">TT 12.5% VAT, Suriname configurable, Barbados 17.5%, US state-level. Tax-exempt products supported. Historical rates preserved.</p>
+<div style="display:grid;gap:.75rem;font-size:.9rem">
+<div style="background:var(--card);padding:.875rem 1rem;border-radius:8px;display:flex;justify-content:space-between"><span>🇹🇹 Trinidad &amp; Tobago</span><span style="color:var(--p);font-weight:600">12.5% VAT · NIS · PAYE · Health Surcharge</span></div>
+<div style="background:var(--card);padding:.875rem 1rem;border-radius:8px;display:flex;justify-content:space-between"><span>🇧🇧 Barbados</span><span style="color:var(--p);font-weight:600">17.5% VAT · NIS · PAYE</span></div>
+<div style="background:var(--card);padding:.875rem 1rem;border-radius:8px;display:flex;justify-content:space-between"><span>🇬🇾 Guyana</span><span style="color:var(--p);font-weight:600">14% VAT · NIS · PAYE</span></div>
+<div style="background:var(--card);padding:.875rem 1rem;border-radius:8px;display:flex;justify-content:space-between"><span>🇯🇲 Jamaica</span><span style="color:var(--p);font-weight:600">15% GCT · NIS · Income Tax · NHT · Ed Tax</span></div>
+<div style="background:var(--card);padding:.875rem 1rem;border-radius:8px;display:flex;justify-content:space-between"><span>🇱🇨 Saint Lucia</span><span style="color:var(--p);font-weight:600">12.5% VAT · NIC · PAYE</span></div>
+<div style="background:var(--card);padding:.875rem 1rem;border-radius:8px;display:flex;justify-content:space-between"><span>🇸🇷 Suriname</span><span style="color:var(--p);font-weight:600">10% OB · SVB · LB — configurable</span></div>
+</div>
+<p style="color:var(--txt2);font-size:.8rem;margin-top:1rem">Tax-exempt products supported. Each jurisdiction's payroll deductions are fully statutory-accurate. Rates inherit automatically on vessel commissioning.</p>
 </div>
 </div>`},
 
@@ -7235,10 +7243,10 @@ Cr. Owner's Equity (3000)    TT$6,000
 {n:41,title:'Enhanced Purchase Orders',subtitle:'Account Assignment',content:`
 <div style="padding:2rem">
 <h2 style="text-align:center;color:var(--p);margin-bottom:2rem">Every Purchase Teaches Accounting</h2>
-<div style="background:var(--bg);padding:2rem;border-radius:var(--rad);margin-bottom:2rem">
-<h3 style="margin-bottom:1rem">The Vision</h3>
-<p style="color:var(--txt2);line-height:1.8;margin-bottom:1rem">Right now: PO marked paid → Everything goes to Inventory account.</p>
-<p style="color:var(--txt2);line-height:1.8">Soon: Each PO line item gets its own account assignment. Office supplies → Supplies Expense. Rent payment → Rent Expense. Product purchase → Inventory.</p>
+<div style="background:var(--succ);color:#FFF;padding:2rem;border-radius:var(--rad);margin-bottom:2rem">
+<h3 style="margin-bottom:1rem">✅ Live in v6.3</h3>
+<p style="line-height:1.8;margin-bottom:1rem">Each PO line item carries its own account assignment. Payable-to-inventory, supplies, rent, or any expense — the chart of accounts is the guide.</p>
+<p style="line-height:1.8;opacity:.92">PO receipt posts directly to the correct ledger account. No manual journal entry required.</p>
 </div>
 <div style="background:var(--card);padding:2rem;border-radius:8px;margin-bottom:2rem">
 <h4 style="margin-bottom:1.5rem">Example Enhanced PO</h4>
@@ -7320,7 +7328,7 @@ Current stock: 50 units
 </div>
 <div style="background:var(--p);color:#FFF;padding:2rem;border-radius:var(--rad)">
 <h3 style="margin-bottom:1rem">Why This Matters</h3>
-<p>Catches errors. Spots fraud. Proves your books are accurate. Required for audits. Professional businesses do this monthly. Soon BiB will too.</p>
+<p>Catches errors. Spots fraud. Proves your books are accurate. Required for audits. Professional businesses do this monthly. BiB does this now — import your bank CSV and match transactions directly.</p>
 </div>
 </div>`},
 
@@ -7534,7 +7542,7 @@ Cr. Revenue (4000) TT$680
 </div>
 <div style="background:var(--bg);padding:2rem;border-radius:var(--rad);border-left:4px solid var(--warn)">
 <h3 style="color:var(--warn);margin-bottom:1rem">Q: Can I use BiB on multiple devices?</h3>
-<p style="color:var(--txt2);line-height:1.8"><strong>A:</strong> Yes, but not automatically. Each device has its own localStorage. You must export from Device A and import to Device B manually. Future: P2P sync (Phase 5) will enable automatic mesh sync.</p>
+<p style="color:var(--txt2);line-height:1.8"><strong>A:</strong> Yes, but not automatically. Each device has its own localStorage. You must export from Device A and import to Device B manually. Future: P2P vessel mesh (v6.4+) will enable automatic sync.</p>
 </div>
 <div style="background:var(--bg);padding:2rem;border-radius:var(--rad);border-left:4px solid var(--info)">
 <h3 style="color:var(--info);margin-bottom:1rem">Q: How do I "save" my work in BiB?</h3>
@@ -7554,7 +7562,7 @@ Cr. Revenue (4000) TT$680
 </div>
 <div style="background:var(--bg);padding:2rem;border-radius:var(--rad);border-left:4px solid var(--warn)">
 <h3 style="color:var(--warn);margin-bottom:1rem">Q: Is BiB secure? What about encryption?</h3>
-<p style="color:var(--txt2);line-height:1.8"><strong>A:</strong> Security is YOUR device's encryption (BitLocker, FileVault, LUKS). BiB data is as secure as your device is. Enable device encryption. Use strong passwords. Physical security matters (don't leave laptop unattended). See Slide 53 for full security model.</p>
+<p style="color:var(--txt2);line-height:1.8"><strong>A:</strong> Security is YOUR device's encryption (BitLocker, FileVault, LUKS). BiB data is as secure as your device is. Enable device encryption. Use strong passwords. Physical security matters (don't leave laptop unattended). See Slide 55 for full security model.</p>
 </div>
 <div style="background:var(--bg);padding:2rem;border-radius:var(--rad);border-left:4px solid var(--info)">
 <h3 style="color:var(--info);margin-bottom:1rem">Q: How do I update BiB to a new version?</h3>
@@ -7566,7 +7574,7 @@ Cr. Revenue (4000) TT$680
 </div>
 <div style="background:var(--bg);padding:2rem;border-radius:var(--rad);border-left:4px solid var(--dang)">
 <h3 style="color:var(--dang);margin-bottom:1rem">Q: Can BiB handle 10,000 invoices? A million?</h3>
-<p style="color:var(--txt2);line-height:1.8"><strong>A:</strong> Currently optimized for ~1,000 transactions. Beyond that, performance degrades (JavaScript array operations). Future: IndexedDB migration (Phase 4.9) will enable millions. For now: Multiple vessels for high-volume businesses.</p>
+<p style="color:var(--txt2);line-height:1.8"><strong>A:</strong> Optimized for ~1,000–3,000 transactions per vessel. Beyond that, JavaScript array operations slow rendering. The sovereign workaround: split by year or category across multiple vessels — each vessel is a separate localStorage scope, so performance stays fast. Future: IndexedDB migration will enable millions in a single vessel. For now, multi-vessel is the production strategy.</p>
 </div>
 <div style="background:var(--bg);padding:2rem;border-radius:var(--rad);border-left:4px solid var(--succ)">
 <h3 style="color:var(--succ);margin-bottom:1rem">Q: Why no "Log In" or "Sign Up"?</h3>
@@ -7579,7 +7587,7 @@ Cr. Revenue (4000) TT$680
 </div>
 </div>`},
 
-// PART 6: CREDITS, ADVANCED TOPICS & FUTURE (Slides 52-64)
+// PART 6: CREDITS, ADVANCED TOPICS & FUTURE (Slides 52-65)
 {n:52,title:'The Architects',subtitle:'The AI Federation + Human Collaboration',content:`
 <div style="padding:2rem">
 <div style="text-align:center;margin-bottom:3rem">
@@ -7594,7 +7602,7 @@ Cr. Revenue (4000) TT$680
 <div style="display:grid;gap:1.5rem;margin-bottom:2rem">
 <div style="background:var(--bg);padding:1.5rem;border-radius:var(--rad);border-left:4px solid #7C3AED">
 <h4 style="margin-bottom:.5rem">Claude (Anthropic)</h4>
-<p style="color:var(--txt2);font-size:.875rem">Primary implementation: Core architecture, Knowledge module (60+ slides), double-entry accounting engine, General Ledger with unknown-account resolution, financial reports with date filters, search & filter across all modules, invoice footer customization, multi-vessel system, full accessibility (for/name attributes), NL translation, bug resolution</p>
+<p style="color:var(--txt2);font-size:.875rem">Primary implementation: Core architecture, Knowledge module (65 slides), double-entry accounting engine, General Ledger, V2V invoice exchange (file/QR/LAN), 6-jurisdiction Caribbean payroll, stock history layer, full mobile UX depth pass, commissioning wizard, placeholder-as-teacher forms, Advanced Reports, v6.0→v6.3 complete evolution</p>
 </div>
 <div style="background:var(--bg);padding:1.5rem;border-radius:var(--rad);border-left:4px solid #FF6B00">
 <h4 style="margin-bottom:.5rem">Grok (xAI)</h4>
@@ -7624,7 +7632,7 @@ Cr. Revenue (4000) TT$680
 </div>
 <div style="background:var(--bg);padding:1.5rem;border-radius:var(--rad);margin-top:2rem">
 <h4 style="margin-bottom:.5rem">Built: February 2026</h4>
-<p style="color:var(--txt2)">Version: ${BOS.v}<br>Size: <span class="bib-vessel-kb">...</span> (complete system, self-measured)<br>Dependencies: Zero<br>License: Sovereign (see Slide 53)</p>
+<p style="color:var(--txt2)">Version: ${BOS.v}<br>Size: <span class="bib-vessel-kb">...</span> (complete system, self-measured)<br>Dependencies: Zero<br>License: Sovereign (see Slide 54)</p>
 </div>
 </div>`},
 
@@ -7687,10 +7695,10 @@ Cr. Revenue (4000) TT$680
 </div>
 </div>`},
 
-{n:55,title:'Units of Measure',subtitle:'Phase 7.1 Roadmap — Products & Services',content:`
+{n:55,title:'Units of Measure',subtitle:'v6.4+ Roadmap — Units of Measure',content:`
 <div style="padding:2rem">
 <div style="background:var(--info);color:#FFF;padding:1.5rem;border-radius:var(--rad);margin-bottom:2rem;text-align:center">
-<strong>🔭 Phase 7.1 Roadmap — Units of Measure</strong>
+<strong>🔭 Roadmap — v6.4+ · Units of Measure not yet implemented · Qty field is unitless · Tracked for sovereign release</strong>
 </div>
 <h2 style="text-align:center;color:var(--p);margin-bottom:2rem">Beyond "Quantity"</h2>
 <div style="background:var(--bg);padding:2rem;border-radius:var(--rad);margin-bottom:2rem">
@@ -7819,7 +7827,7 @@ Cr. Revenue (4000) TT$680
 <h2 style="text-align:center;color:var(--p);margin-bottom:3rem">Funding Future Evolutions</h2>
 <div style="background:var(--bg);padding:2rem;border-radius:var(--rad);margin-bottom:2rem">
 <h3 style="margin-bottom:1rem">The Philosophy</h3>
-<p style="color:var(--txt2);line-height:1.8">This vessel is FREE. You owe $0. It works 100% without paying. But if it serves you, consider a one-time US$1 contribution to fund evolution of new capsules & vessels.</p>
+<p style="color:var(--txt2);line-height:1.8">This vessel is FREE. You owe $0. It works 100% without paying. But if it serves you, consider a voluntary contribution — TT$25 · TT$50 · TT$100 — to fund evolution of new capsules & vessels. Every contribution is recorded in the vessel's own ledger. The gift economy is itself double-entry.</p>
 </div>
 <div style="display:grid;gap:1.5rem;margin-bottom:2rem">
 <div style="background:var(--succ);color:#FFF;padding:1.5rem;border-radius:var(--rad)">
@@ -7890,9 +7898,7 @@ Cr. Revenue (4000) TT$680
 <p style="font-size:1.125rem;opacity:.95;margin-bottom:2rem">Use it wisely. Spread it relentlessly. Build the future.</p>
 <div style="font-size:3rem;letter-spacing:.5rem;margin-top:2rem">⚓ 🌍 ♾️</div>
 </div>
-<div style="background:var(--bg);padding:2rem;border-radius:var(--rad);margin-top:3rem;max-width:700px;margin-left:auto;margin-right:auto">
-<p style="color:var(--txt2);font-size:.875rem">End of Knowledge Module • 65 Slides Complete • Return to Dashboard to Begin</p>
-</div>
+
 </div>`},
 
 {n:62,title:'HR Foundation & QR Compound',subtitle:'HR Foundation & Compound',content:`
@@ -7970,6 +7976,9 @@ Procure → Produce → Quote → Invoice → Collect → <strong style="color:v
 <div style="background:var(--p);color:#FFF;padding:1rem 1.5rem;border-radius:var(--rad);font-size:.85rem;text-align:center">
 <strong>Communication · Transportation · Shelter · Food · Education</strong><br>
 <span style="opacity:.85">Not industries BOS serves — the substrate BOS runs on.</span>
+</div>
+<div style="background:var(--bg);padding:1.5rem;border-radius:var(--rad);margin-top:1.5rem;text-align:center">
+<p style="color:var(--txt2);font-size:.875rem">End of Knowledge Module • 65 Slides Complete • Return to Dashboard to Begin</p>
 </div>
 </div>`}
 ];
