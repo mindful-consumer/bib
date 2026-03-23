@@ -1347,6 +1347,76 @@ this.load();
 
 setInterval(()=>this.updMetrics(),5000);
 
+// ── Cross-tab storage sync — detect registry changes from other tabs ─────────
+// When another tab deletes a vessel or wipes all data, this tab's in-memory
+// state becomes stale. The storage event fires whenever another tab changes
+// localStorage at the same origin. We react by:
+//   1. Stopping formation announces for vessels that no longer exist.
+//   2. Sending departure signals for evicted vessels.
+//   3. Showing the welcome screen if the current vessel was deleted.
+// ── Page Visibility API — beat Chrome's background tab throttling ────────────
+// Chrome throttles setInterval in background tabs to ~1 minute.
+// SPM marks BiBBOS stale after 45s. If BiBBOS is in the background for >45s,
+// it appears stale even though the channel is alive.
+// Fix: announce immediately when the tab becomes visible, and reset the timer
+// so it fires at the correct 15s cadence after the tab returns to foreground.
+document.addEventListener('visibilitychange', () => {
+  if(document.visibilityState === 'visible'){
+    // Tab came to foreground — announce immediately and reset timer cadence
+    if(BOS._formationChannel && BOS._formationStartedBy === VesselManager.currentVesselId){
+      // Reset timer to restore 15s cadence (may have been stretched by throttling)
+      clearInterval(BOS._formationTimer);
+      BOS._formationTimer = setInterval(() => BOS._formationAnnounce(), 15000);
+      // Announce immediately — don't wait for next 15s tick
+      BOS._formationAnnounce();
+    }
+  }
+});
+
+window.addEventListener('storage', (evt) => {
+  if(evt.key === 'bib-vessel-registry'){
+    const freshRegistry = VesselManager.getRegistry();
+    const currentId = VesselManager.currentVesselId;
+    // If the current vessel was deleted by another tab, show welcome
+    if(currentId && !freshRegistry.find(v => v.id === currentId)){
+      // Send departure for the now-deleted vessel before losing context
+      try{
+        if(BOS._formationChannel){
+          BOS._formationChannel.postMessage({
+            _type: 'bibbos_formation_departure', _app: 'bibbos',
+            vesselId: currentId,
+            entityName: BOS.cfg ? (BOS.cfg.name||'') : '',
+            entityIcon: BOS.cfg ? (BOS.cfg.icon||'🏢') : '🏢',
+            ts: new Date().toISOString()
+          });
+        }
+      }catch(e){}
+      clearInterval(BOS._formationTimer);
+      BOS._formationTimer = null;
+      BOS._formationStartedBy = null;
+      VesselManager.currentVesselId = null;
+      sessionStorage.removeItem('bib-current-vessel');
+      BOS.showWelcome();
+    }
+    // If registry is now empty (wipeAll from another tab)
+    if(freshRegistry.length === 0 && !currentId){
+      BOS.showWelcome();
+    }
+  }
+  // If all localStorage was cleared (wipeAll from another tab)
+  if(evt.key === null){
+    clearInterval(BOS._formationTimer);
+    BOS._formationTimer = null;
+    BOS._formationStartedBy = null;
+    VesselManager.currentVesselId = null;
+    sessionStorage.clear();
+    BOS.cfg = {theme:'ubuntu'};
+    BOS.people=[]; BOS.prod=[]; BOS.inv=[]; BOS.po=[];
+    BOS.logs=[]; BOS.intentions=[];
+    BOS.showWelcome();
+  }
+});
+
 // ── Public vessel detection ───────────────────────────────────────────
 // When running on http/https we are the public vessel at bibbos.com
 // Show the sovereignty banner and adapt the download button text
@@ -1638,6 +1708,26 @@ if(_int)this.intentions=_int;
 const _rcGen=this.processRecurring();
 if(_rcGen>0)this.log('success','🔁 '+_rcGen+' recurring invoice(s) auto-generated');
 this.updCards();this.updMetrics();
+// ── Origin consistency check ─────────────────────────────────────────────────
+// If this tab is on localhost but the formation server URL points to a LAN IP,
+// the localStorage at this origin is DIFFERENT from the LAN IP origin.
+// This means intentions, vessels, etc. are stored separately.
+// Warn the user so they don't confuse the two tabs.
+try{
+  const _thisOrigin = window.location.hostname;
+  const _isLocalhost = _thisOrigin === 'localhost' || _thisOrigin === '127.0.0.1';
+  const _cfgUrl = (this.cfg && this.cfg.formationServerUrl) || '';
+  const _cfgIsLAN = _cfgUrl && !_cfgUrl.includes('localhost') && !_cfgUrl.includes('127.0.0.1');
+  if(_isLocalhost && _cfgIsLAN){
+    setTimeout(()=>{
+      this._flashNotice('⚠ Localhost origin: data is stored separately from the LAN IP tab. '
+        +'Use http://'+_cfgUrl.replace(/^ws:\/\//,'').replace(/\/formation$/,'').split(':')[0]
+        +':8080 in all tabs for a consistent fleet.');
+    }, 1200);
+    this.log('warning', '[Origin] This tab is on localhost — localStorage is separate from the LAN IP tab. Intentions and vessels set up at the LAN IP are not visible here.');
+  }
+}catch(e){}
+
 // Formation channel — auto-start announcing on every vessel load (default ON)
 if(!this._formationChannel){
   try{
@@ -2128,6 +2218,28 @@ this.log('success','⚓ Vessel Commissioned: '+this.cfg.name+' ('+loc.n+')');
 this.log('success','Sovereignty Score: 96/100 — Offline-ready. Data local. Formation hub active. Zero cloud dependency.');
 this.log('info','Structure: '+this.cfg.structure+' | Industry: '+(this.cfg.industry||'Not specified'));
 this.updCards();this.updMetrics();
+// ── Formation: update startedBy and announce the new vessel immediately ──────
+// Without this, _formationStartedBy stays as the previous vessel's ID,
+// fcActive = false, and the new vessel never appears in SPM or Masthead.
+this._formationStartedBy = VesselManager.currentVesselId;
+if(this._formationChannel){
+  clearInterval(this._formationTimer);
+  this._formationTimer = setInterval(()=> this._formationAnnounce(), 15000);
+  this._formationAnnounce(); // announce the new vessel immediately
+  this._addFormationLog('connected', 'New vessel commissioned: '+(this.cfg.name||'vessel'));
+} else {
+  // Channel not yet open (e.g. first vessel ever) — create it
+  try{
+    const _sUrl = (this.cfg && this.cfg.formationServerUrl) || FormationTransport.autoUrl();
+    this._formationChannel = new FormationTransport({ serverUrl: _sUrl });
+    this._formationChannel.onmessage = e => this._handleFormationMessage(e.data);
+    this._formationChannel.onopen = () => this._formationAnnounce();
+    clearInterval(this._formationTimer);
+    this._formationTimer = setInterval(()=> this._formationAnnounce(), 15000);
+    setTimeout(()=> this._formationAnnounce(), 300);
+    this._addFormationLog('connected', 'Formation channel opened for new vessel: '+(this.cfg.name||'vessel'));
+  }catch(e){ console.warn('[BiBBOS] formation channel open failed on new vessel:', e); }
+}
 }
 }
 
@@ -12685,7 +12797,6 @@ h+='</div>';
 h+='</div>';
 
 h+='</div>';
-h+='</div>';
 
 // ── Formation Channel section ────────────────────────────────
 h+='<div style="background:var(--card);padding:2rem;border-radius:var(--rad);box-shadow:var(--sh);margin-bottom:2rem">';
@@ -13622,6 +13733,24 @@ const keysBefore=Object.keys(localStorage).length;
 const bytesBefore=Object.keys(localStorage)
 .reduce((sum,k)=>sum+(localStorage.getItem(k)||'').length,0);
 
+// Send formation departure for every vessel before wiping
+// so SPM and Masthead remove them immediately without waiting 90s
+try{
+  if(this._formationChannel){
+    const _reg = VesselManager.getRegistry();
+    _reg.forEach(entry => {
+      try{
+        this._formationChannel.postMessage({
+          _type:'bibbos_formation_departure', _app:'bibbos',
+          vesselId: entry.id,
+          entityName: entry.name||'', entityIcon: entry.icon||'🏢',
+          ts: new Date().toISOString(), _wipeAll: true
+        });
+      }catch(e){}
+    });
+  }
+}catch(e){}
+
 // Clear everything
 localStorage.clear();
 sessionStorage.clear();
@@ -13764,13 +13893,21 @@ this.log('success','System log exported');
       // Most recent event for Masthead change log
       recentEvent: this._recentEvent || null,
       _isActive: true,
-      // Intention list for SPM key registry (keys + minimal identity only)
+      // Intention list for SPM key registry + approval state sync
       _intentions: (this.intentions||[]).map(x=>({
         id: x.id, name: x.name, sector: x.sector||'',
         vesselKey: x.vesselKey||null, vesselId: x.vesselId||null,
         status: x.status, targetDate: x.targetDate||null,
         targetBudget: x.targetBudget||null, targetCurrency: x.targetCurrency||'TTD',
-        sponsor: x.sponsor||'', assignedPM: x.assignedPM||'', rationale: x.rationale||''
+        sponsor: x.sponsor||'', assignedPM: x.assignedPM||'', rationale: x.rationale||'',
+        // Approval/revision state — required by SPM heartbeat handler for status sync
+        approvedAt:     x.approvedAt||null,
+        _approvedBy:    x._approvedBy||null,
+        _revisionNote:  x._revisionNote||null,
+        _revisionAt:    x._revisionAt||null,
+        planApproved:   x.status === 'active' && !!x.approvedAt,
+        _spmVesselId:   x._spmVesselId||null,
+        _spmIntentionId: x._spmIntentionId||null
       }))
     };
   }
@@ -13841,25 +13978,43 @@ this.log('success','System log exported');
               vendors:   this.people.filter(p=>p.type==='vendor').length,
               employees: (this.employees||[]).filter(e=>e.status!=='terminated').length
             } : { customers:0, vendors:0, employees:0 },
-            intentionsSummary: entry.id === VesselManager.currentVesselId ? {
-              total:    (this.intentions||[]).length,
-              ideas:    (this.intentions||[]).filter(x=>x.status==='idea').length,
-              approved: (this.intentions||[]).filter(x=>x.status==='approved').length,
-              issued:   (this.intentions||[]).filter(x=>x.status==='issued'||x.status==='active').length
-            } : { total:0, ideas:0, approved:0, issued:0 },
-            // Full intention list for SPM key registry — active vessel only
-            _intentions: entry.id === VesselManager.currentVesselId
-              ? (this.intentions||[]).map(x=>({
-                  id: x.id, name: x.name, sector: x.sector||'',
-                  vesselKey: x.vesselKey||null, vesselId: x.vesselId||null,
-                  status: x.status, targetDate: x.targetDate||null,
-                  targetBudget: x.targetBudget||null, targetCurrency: x.targetCurrency||'TTD',
-                  sponsor: x.sponsor||'', assignedPM: x.assignedPM||'', rationale: x.rationale||'',
-                  approvedAt: x.approvedAt||null, _approvedBy: x._approvedBy||null,
-                  _revisionNote: x._revisionNote||null, _revisionAt: x._revisionAt||null,
-                  planApproved: x.status==='active' // true whenever BiBBOS has approved the plan
-                }))
-              : [],
+            intentionsSummary: (()=>{
+              const _si = entry.id === VesselManager.currentVesselId
+                ? (this.intentions||[])
+                : (()=>{ try{ const _r=localStorage.getItem(entry.id+'_intentions'); return _r?JSON.parse(_r):[]; }catch(e){return [];} })();
+              return {
+                total:    _si.length,
+                ideas:    _si.filter(x=>x.status==='idea').length,
+                approved: _si.filter(x=>x.status==='approved').length,
+                issued:   _si.filter(x=>x.status==='issued'||x.status==='active').length
+              };
+            })(),
+            // Full intention list for SPM key registry — all vessels, not just active.
+            // If non-active, load from localStorage so keys are discoverable even when
+            // the user has switched to a different vessel. Without this, a vessel's
+            // keys are invisible to SPM the moment the user navigates away from it.
+            _intentions: (()=>{
+              let _ints = [];
+              if(entry.id === VesselManager.currentVesselId){
+                _ints = this.intentions||[];
+              } else {
+                // Read intentions directly from localStorage for this vessel
+                try{
+                  const _raw = localStorage.getItem(entry.id+'_intentions');
+                  _ints = _raw ? JSON.parse(_raw) : [];
+                }catch(e){ _ints = []; }
+              }
+              return _ints.map(x=>({
+                id: x.id, name: x.name, sector: x.sector||'',
+                vesselKey: x.vesselKey||null, vesselId: x.vesselId||null,
+                status: x.status, targetDate: x.targetDate||null,
+                targetBudget: x.targetBudget||null, targetCurrency: x.targetCurrency||'TTD',
+                sponsor: x.sponsor||'', assignedPM: x.assignedPM||'', rationale: x.rationale||'',
+                approvedAt: x.approvedAt||null, _approvedBy: x._approvedBy||null,
+                _revisionNote: x._revisionNote||null, _revisionAt: x._revisionAt||null,
+                planApproved: x.status==='active'
+              }));
+            })(),
             spmVessels:   [],
             _isActive:    entry.id === VesselManager.currentVesselId,
             // People list (customers + vendors + employees) for SPM contact pool
@@ -13902,12 +14057,21 @@ this.log('success','System log exported');
       this._addFormationLog('snapshot', 'Hub: '+count+' vessel'+(count!==1?'s':'')+' in formation');
       // Deliver any recent directives from before we connected
       if(Array.isArray(msg.recentDirectives)) {
-        // Defer directive delivery so vessel is fully initialised first
         setTimeout(()=> {
           msg.recentDirectives.forEach(d => {
             if(d._type === 'masthead_directive' && d.message) this._handleFormationMessage(d);
           });
         }, 100);
+      }
+      // Replay stored intention events (spm_plan_submitted/bibbos_intention_status missed while offline)
+      if(Array.isArray(msg.recentIntentionStatuses)) {
+        setTimeout(()=> {
+          msg.recentIntentionStatuses.forEach(s => {
+            if(s._type === 'spm_plan_submitted' || s._type === 'bibbos_intention_status') {
+              this._handleFormationMessage(s);
+            }
+          });
+        }, 300);
       }
       setTimeout(()=> this._formationAnnounce(), 200);
       return;
@@ -13925,9 +14089,14 @@ this.log('success','System log exported');
     if(msg._type === 'masthead_directive'){
       const text = msg.message||'Directive received';
       const ts   = msg.ts || new Date().toISOString();
-      // Skip if already shown this session (prevents duplicate from snapshot + direct push)
+      // Always log to Signal Log — log before dedup checks so it's recorded
+      // even if the banner display is suppressed as a duplicate.
+      this._addFormationLog('directive', 'Masthead directive: '+text.slice(0,80));
+      // Skip banner if already shown this session (prevents duplicate display)
       try{
-        if(ts && sessionStorage.getItem('bib_shown_directive') === ts) return;
+        if(ts && sessionStorage.getItem('bib_shown_directive') === ts) {
+          return; // banner already shown, but log entry above was recorded
+        }
         sessionStorage.setItem('bib_shown_directive', ts);
       }catch(e){}
       // Skip if not newer than last dismissed
@@ -13935,7 +14104,6 @@ this.log('success','System log exported');
         const lastDismissed = localStorage.getItem('bib_last_dismissed_directive')||'';
         if(ts && lastDismissed && ts <= lastDismissed) return;
       }catch(e){}
-      this._addFormationLog('directive', 'Masthead directive: '+text.slice(0,80));
       this.log('info', '⬡ Masthead directive: '+text);
       this._flashNotice('⬡ Directive: '+text.slice(0,60));
       this._lastDirective = { text, ts, _read: false };
@@ -13945,15 +14113,81 @@ this.log('success','System log exported');
       setTimeout(()=> this._showDirectiveBanner(), 800);
     }
     // SPM plan submitted (push) — flip intention to pending-approval immediately, no heartbeat wait
+    if(msg._type === 'spm_plan_submitted'){
+      // Visible reception confirmation — fires regardless of match outcome
+      // Tells us definitively whether the message arrived at BiBBOS
+      this._addFormationLog('submitted',
+        '◎ RECEIVED spm_plan_submitted · intentionId='+(msg.intentionId||'NULL')
+        +' · intentions='+(this.intentions||[]).length
+        +' · ids='+JSON.stringify((this.intentions||[]).map(x=>x.id).slice(0,3))
+      );
+      this._flashNotice('◎ Submit received · intentionId='+(msg.intentionId||'NULL')
+        +' · '+(this.intentions||[]).length+' intentions in memory');
+      if(!msg.intentionId){
+        this._addFormationLog('warn','spm_plan_submitted missing intentionId — cannot match');
+        return;
+      }
+    }
     if(msg._type === 'spm_plan_submitted' && msg.intentionId){
-      const i = (this.intentions||[]).findIndex(x=>x.id === msg.intentionId);
+      // ── Match strategy (most to least specific) ──────────────────────────
+      // 1. Primary: intention.id === msg.intentionId  (native commissioned flow)
+      // 2. Fallback A: intention._spmVesselId === msg.vesselId
+      //    (SPM heartbeat has already registered itself on the intention)
+      // 3. Fallback B: bibbosEntityId matches current vessel AND intention is
+      //    in an issuable state (covers JSON-restore scenario where IDs diverge)
+      // All three paths converge to the same flip logic below.
+      console.log('[BiBBOS Formation] spm_plan_submitted received:',
+        'intentionId='+msg.intentionId,
+        'vesselId='+msg.vesselId,
+        'bibbosEntityId='+msg.bibbosEntityId,
+        'intentions in memory='+(this.intentions||[]).length,
+        'ids='+JSON.stringify((this.intentions||[]).map(x=>x.id))
+      );
+      let i = (this.intentions||[]).findIndex(x=>x.id === msg.intentionId);
+
+      if(i < 0 && msg.vesselId){
+        // Fallback A — SPM vessel has already announced itself via heartbeat
+        i = (this.intentions||[]).findIndex(x=>x._spmVesselId === msg.vesselId);
+        if(i >= 0) this.log('info', '[Formation] spm_plan_submitted matched via _spmVesselId fallback');
+      }
+
+      if(i < 0 && msg.bibbosEntityId){
+        // Fallback B — match by bibbosEntityId on any intention, or by currentVesselId,
+        // or by _spmIntentionId anchor set on a prior fallback match.
+        // Does NOT require currentVesselId to match — importVessel doesn't update it.
+        let _j = (this.intentions||[]).findIndex(x=>x._spmIntentionId === msg.intentionId);
+        if(_j < 0)
+          _j = (this.intentions||[])
+            .map((x,idx)=>({x,idx}))
+            .filter(({x})=>['issued','approved','active','idea','revision-requested'].includes(x.status))
+            .sort((a,b)=>(b.x.updatedAt||'').localeCompare(a.x.updatedAt||''))
+            .find(({x})=>!x._spmVesselId || x._spmVesselId === msg.vesselId)?.idx ?? -1;
+        if(_j < 0 && msg.bibbosEntityId === VesselManager.currentVesselId){
+          _j = (this.intentions||[])
+            .map((x,idx)=>({x,idx}))
+            .filter(({x})=>['issued','approved','active','idea'].includes(x.status))
+            .sort((a,b)=>(b.x.updatedAt||'').localeCompare(a.x.updatedAt||''))[0]?.idx ?? -1;
+        }
+        if(_j >= 0){
+          i = _j;
+          this.log('info', '[Formation] spm_plan_submitted matched via bibbosEntityId fallback — intention: '+this.intentions[i].name);
+        }
+      }
+
       if(i >= 0){
         const intent = this.intentions[i];
         const _okStatuses = ['issued','idea','approved','revision-requested','active'];
+        console.log('[BiBBOS Formation] match found at index '+i+': name='+intent.name+' status='+intent.status+' okStatus='+_okStatuses.includes(intent.status));
         if(_okStatuses.includes(intent.status)){
           intent.status           = 'pending-approval';
           intent._planSubmittedAt = msg.ts || new Date().toISOString();
           intent._spmStatus       = 'pending-approval';
+          // Anchor the intentionId so future messages match on primary path
+          if(!intent.id || intent.id !== msg.intentionId){
+            intent._spmIntentionId = msg.intentionId; // mirror without overwriting own id
+          }
+          // Anchor the SPM vessel id so future fallback A always works
+          if(msg.vesselId) intent._spmVesselId = msg.vesselId;
           // Store note for banner display
           if(msg.note){
             intent._spmSubmission = intent._spmSubmission || {};
@@ -13964,9 +14198,24 @@ this.log('success','System log exported');
             (msg.note ? msg.note : 'Plan submitted by SPM') + (msg.steward ? ' · '+msg.steward : ''));
           this.save();
           this.log('info', '◎ Plan submitted for approval: '+intent.name+(msg.note?' · "'+msg.note.slice(0,60)+'"':''));
+          // Refresh whichever screen is currently open
           if(this.cur==='profile') this.rProfile();
+          else if(this.cur==='dash') this.rDashboard();
+          // Flash notification — visible regardless of current screen.
+          // Critical: the user must know WHICH BiBBOS tab received the submission,
+          // especially when multiple tabs are open at different origins.
+          this._flashNotice('◎ Plan submitted for approval: '+intent.name.slice(0,40)
+            +(msg.note?' · "'+msg.note.slice(0,40)+'"':'')
+            +' — open Intentions to review');
           this._addFormationLog('submitted', 'Plan submitted: '+intent.name);
+          // Announce immediately after flip — updates SPM's _lastSeen and
+          // clears the stale flag. Without this, BiBBOS may not heartbeat for
+          // up to 60s (Chrome background tab throttling) and SPM stays stale.
+          this._formationAnnounceNow();
         }
+      } else {
+        // No match found — log so the steward can diagnose
+        this.log('warning', '[Formation] spm_plan_submitted received but no matching intention found. intentionId='+msg.intentionId+' vesselId='+msg.vesselId+'. Open Company → Formation to verify the key link.');
       }
     }
     // Fix H: project closed — update intention status to 'completed'
@@ -13985,7 +14234,26 @@ this.log('success','System log exported');
     }
     // SPM vessel heartbeat — update matching intention with live SPM status
     if(msg._type === 'spm_formation_heartbeat' && msg.intentionId){
-      const i = (this.intentions||[]).findIndex(x=>x.id === msg.intentionId);
+      // Same three-path match as spm_plan_submitted for robustness
+      let i = (this.intentions||[]).findIndex(x=>x.id === msg.intentionId);
+      if(i < 0 && msg.vesselId)
+        i = (this.intentions||[]).findIndex(x=>x._spmVesselId === msg.vesselId);
+      if(i < 0 && msg.bibbosEntityId){
+        // Same broad fallback as spm_plan_submitted — doesn't require currentVesselId match
+        let _j = (this.intentions||[]).findIndex(x=>x._spmIntentionId === msg.intentionId);
+        if(_j < 0)
+          _j = (this.intentions||[])
+            .map((x,idx)=>({x,idx}))
+            .filter(({x})=>['issued','approved','active','idea','pending-approval'].includes(x.status))
+            .sort((a,b)=>(b.x.updatedAt||'').localeCompare(a.x.updatedAt||''))
+            .find(({x})=>!x._spmVesselId || x._spmVesselId === msg.vesselId)?.idx ?? -1;
+        if(_j < 0 && msg.bibbosEntityId === VesselManager.currentVesselId)
+          _j = (this.intentions||[])
+            .map((x,idx)=>({x,idx}))
+            .filter(({x})=>['issued','approved','active','idea','pending-approval'].includes(x.status))
+            .sort((a,b)=>(b.x.updatedAt||'').localeCompare(a.x.updatedAt||''))[0]?.idx ?? -1;
+        if(_j >= 0) i = _j;
+      }
       if(i >= 0){
         const intent = this.intentions[i];
         intent._spmVesselId      = msg.vesselId;
