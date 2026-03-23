@@ -1,0 +1,1327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Masthead v5 — Sovereign Formation Oversight</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⬡</text></svg>">
+<!-- FormationTransport loaded from vessel server — update host if needed -->
+<script>
+/**
+ * FormationTransport v2.4
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Sovereign formation channel. Standalone first, networked when available.
+ *
+ * SEND path (no duplicates):
+ *   - WS connected  → send via WS only (server fans out to everyone)
+ *   - WS down/none  → send via BC only (same-browser, standalone)
+ *   Never both. Server fans out cross-device AND same-browser when WS is up.
+ *
+ * RECEIVE path (both always active):
+ *   - WS: hub events, cross-device messages, formation_snapshot/departure
+ *   - BC: same-browser messages arriving while WS is reconnecting
+ *
+ * Dedup: messages received on both paths within 500ms are suppressed.
+ *
+ * Mobile (no BroadcastChannel): WS only — full functionality via server.
+ * Standalone (no server): BC only — full original same-browser capability.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+class FormationTransport {
+
+  static autoUrl() {
+    if (typeof window === "undefined") return "";
+    var proto = window.location.protocol === "https:" ? "wss" : "ws";
+    return proto + "://" + window.location.hostname + ":8080";
+  }
+
+  constructor(opts) {
+    opts = opts || {};
+    this._serverUrl      = (opts.serverUrl || "").replace(/\/$/, "").replace(/\/formation$/, "");
+    this._debug          = !!opts.debug;
+    this._ws             = null;
+    this._bc             = null;
+    this._mode           = "none";
+    this._reconnectN     = 0;
+    this._reconnectTimer = null;
+    this._pingTimer      = null;
+    this._offlineQueue   = [];
+    this._closed         = false;
+    this._seen           = {};   // dedup: msgKey → timestamp
+    this.onmessage       = null;
+    this.onopen          = null;
+
+    this._log("v2.4 server:", this._serverUrl || "(none — standalone BC)");
+    this._initBC();
+    this._connect();
+  }
+
+  // ── Public API ─────────────────────────────────────────────────────────────
+
+  postMessage(obj) {
+    if (this._closed) return;
+
+    // One-shot messages must never enter the offline queue — replaying a
+    // departure on reconnect would falsely evict an already-reconnected vessel.
+    var isOneShot = (obj._type === 'bibbos_formation_departure' ||
+                     obj._type === 'spm_project_closed');
+
+    // Single send path — WS if connected, BC otherwise. Never both.
+    if (this._ws && this._ws.readyState === WebSocket.OPEN) {
+      try { this._ws.send(JSON.stringify(obj)); return; } catch (e) { this._log("ws send:", e); }
+    }
+
+    if (this._bc) {
+      try { this._bc.postMessage(obj); return; } catch (e) {}
+    }
+
+    // Neither WS nor BC — queue for sync burst on reconnect (heartbeats only)
+    if (!isOneShot) {
+      this._queueOffline(obj);
+    }
+  }
+
+  close() {
+    this._closed = true;
+    this._clearTimers();
+    if (this._ws) { try { this._ws.close(1000, "closed"); } catch {} }
+    if (this._bc) { try { this._bc.close(); } catch {} }
+    this._ws = null; this._bc = null; this._mode = "none";
+  }
+
+  get mode()      { return this._mode; }
+  get connected() { return !!(this._ws && this._ws.readyState === WebSocket.OPEN); }
+
+  // ── Internal ───────────────────────────────────────────────────────────────
+
+  _initBC() {
+    if (typeof BroadcastChannel === "undefined") { this._log("BC unavailable (mobile)"); return; }
+    try {
+      var self = this;
+      this._bc = new BroadcastChannel("spm-formation");
+      this._bc.onmessage = function (evt) { self._routeInbound(evt.data, "bc"); };
+      if (this._mode === "none") this._mode = "bc";
+      this._log("BC open (standalone path)");
+    } catch (e) { this._log("BC failed:", e); }
+  }
+
+  _connect() {
+    if (this._closed || !this._serverUrl) return;
+    if (typeof WebSocket === "undefined") return;
+    this._connectWS();
+  }
+
+  _connectWS() {
+    var url = this._serverUrl + "/formation";
+    var self = this;
+    var ws;
+    try { ws = new WebSocket(url); } catch (e) { this._log("WS failed:", e); return; }
+    this._ws = ws;
+
+    ws.onopen = function () {
+      self._log("WS open");
+      self._mode = "ws";
+      self._reconnectN = 0;
+      self._clearTimers();
+      self._startPing();
+      self._flushOfflineQueue();
+      if (self.onopen) { try { self.onopen(); } catch(e) {} }
+    };
+
+    ws.onmessage = function (evt) {
+      var msg; try { msg = JSON.parse(evt.data); } catch { return; }
+      self._routeInbound(msg, "ws");
+    };
+
+    ws.onerror = function (e) { self._log("WS error:", e.type || e); };
+
+    ws.onclose = function (evt) {
+      self._log("WS closed:", evt.code);
+      self._clearTimers();
+      self._ws = null;
+      if (self._closed) return;
+      if (self._mode === "ws") self._mode = self._bc ? "bc" : "none";
+      // Exponential backoff: 2s, 4s, 8s, 16s, 30s cap — reduces server churn on mobile
+      var MAX_RECONNECT = 20;
+      if (self._reconnectN < MAX_RECONNECT) {
+        var delay = Math.min(30000, 2000 * Math.pow(1.5, self._reconnectN));
+        self._reconnectN++;
+        self._log("reconnecting in", Math.round(delay/1000) + "s (attempt " + self._reconnectN + ")");
+        self._reconnectTimer = setTimeout(function () { self._connectWS(); }, delay);
+      }
+    };
+  }
+
+  _routeInbound(msg, source) {
+    if (!msg || typeof msg !== "object") return;
+    var type = msg._type || msg.type || "";
+
+    // Dedup — only for non-heartbeat messages
+    // Heartbeats always have unique ts values — never suppress them
+    var isHeartbeat = (type === 'bibbos_formation_heartbeat' || type === 'spm_formation_heartbeat' || type === 'masthead_heartbeat');
+    if (!isHeartbeat) {
+      var key = this._msgKey(msg);
+      if (key) {
+        var now = Date.now();
+        if (this._seen[key] && (now - this._seen[key]) < 500) {
+          this._log("dedup suppressed:", type, "from", source);
+          return;
+        }
+        this._seen[key] = now;
+        if (Object.keys(this._seen).length > 200) {
+          var _self = this; var cutoff = now - 2000;
+          Object.keys(this._seen).forEach(function(k){ if(_self._seen[k] < cutoff) delete _self._seen[k]; });
+        }
+      }
+    }
+
+    // Translate hub departure
+    if (type === "formation_departure" && msg.vesselId && msg._hub) {
+      if (this.onmessage) try { this.onmessage({ data: {
+        _type:"bibbos_formation_departure", vesselId:msg.vesselId,
+        entityName:msg.entityName||msg.label||null, _hub:true
+      }}); } catch {}
+      return;
+    }
+
+    if (type === "formation_pong") return;
+
+    if (this.onmessage) try { this.onmessage({ data: msg }); } catch {}
+  }
+
+  _msgKey(msg) {
+    // Build a dedup key from stable fields — ts + vesselId + type
+    var type = msg._type || msg.type || "";
+    var vid  = msg.vesselId || msg._vesselId || "";
+    var ts   = msg.ts || "";
+    if (!type || (!vid && !ts)) return null;
+    return type + "|" + vid + "|" + ts;
+  }
+
+  _queueOffline(obj) {
+    if (this._offlineQueue.length >= 64) this._offlineQueue.shift();
+    this._offlineQueue.push({ obj: obj, ts: Date.now() });
+    this._log("queued:", obj._type || "?");
+  }
+
+  _flushOfflineQueue() {
+    if (!this._offlineQueue.length) return;
+    var self = this; var q = this._offlineQueue.splice(0);
+    q.forEach(function (item) {
+      if (self._ws && self._ws.readyState === WebSocket.OPEN) {
+        try { self._ws.send(JSON.stringify(
+          Object.assign({}, item.obj, { _offline: true, _offlineTs: item.ts })
+        )); } catch {}
+      }
+    });
+  }
+
+  _startPing() {
+    var self = this;
+    // Send an immediate ping on open — proves alive to server before first heartbeat
+    try { self._ws.send(JSON.stringify({ _type: "formation_ping", ts: Date.now() })); } catch {}
+    // Then every 10s — well under any mobile NAT timeout
+    this._pingTimer = setInterval(function () {
+      if (self._ws && self._ws.readyState === WebSocket.OPEN) {
+        try { self._ws.send(JSON.stringify({ _type: "formation_ping", ts: Date.now() })); } catch {}
+      }
+    }, 10000);
+  }
+
+  _clearTimers() {
+    if (this._reconnectTimer) { clearTimeout(this._reconnectTimer); this._reconnectTimer = null; }
+    if (this._pingTimer)      { clearInterval(this._pingTimer);      this._pingTimer = null; }
+  }
+
+  _log() {
+    if (!this._debug) return;
+    var a = Array.prototype.slice.call(arguments);
+    console.log.apply(console, ["[FT]"].concat(a));
+  }
+}
+
+window.FormationTransport = FormationTransport;
+
+</script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0B0F1A;--card:#141928;--card2:#1A2035;--bord:#252D45;
+  --p:#60A5FA;--pd:#3B82F6;--succ:#10B981;--warn:#F59E0B;--dang:#EF4444;--info:#A78BFA;
+  --txt:#E2E8F0;--txt2:#94A3B8;--txt3:#64748B;
+  --sh:0 2px 12px rgba(0,0,0,.4);--rad:10px;--mono:'JetBrains Mono',monospace
+}
+body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;display:flex;flex-direction:column}
+
+/* ── TOP BAR ── */
+.bar{background:var(--card);border-bottom:2px solid var(--bord);padding:.75rem 1.25rem;display:flex;align-items:center;gap:1rem;position:sticky;top:0;z-index:100;box-shadow:var(--sh)}
+.bar-logo{font-size:1.4rem;line-height:1}
+.bar-title{font-weight:700;font-size:1.1rem;color:var(--p);letter-spacing:.02em}
+.bar-sub{font-size:.75rem;color:var(--txt3);margin-top:.1rem}
+.bar-right{margin-left:auto;display:flex;align-items:center;gap:.75rem}
+.conn-dot{width:8px;height:8px;border-radius:50%;background:var(--txt3);flex-shrink:0;transition:background .3s}
+.conn-dot.ws{background:var(--succ);box-shadow:0 0 6px var(--succ)}
+.conn-dot.bc{background:var(--warn)}
+.conn-label{font-size:.75rem;color:var(--txt2)}
+.btn{padding:.4rem .9rem;border:none;border-radius:6px;font-size:.8rem;font-weight:600;cursor:pointer;transition:all .15s}
+.btn-p{background:var(--pd);color:#fff}.btn-p:hover{background:var(--p)}
+.btn-sec{background:var(--card2);color:var(--txt);border:1px solid var(--bord)}.btn-sec:hover{border-color:var(--p);color:var(--p)}
+.btn-dang{background:transparent;color:var(--dang);border:1px solid var(--dang)}.btn-dang:hover{background:var(--dang);color:#fff}
+.btn-sm{padding:.25rem .6rem;font-size:.72rem}
+
+/* ── LAYOUT ── */
+.main{display:grid;grid-template-columns:300px 1fr;flex:1;overflow:hidden;height:calc(100vh - 56px)}
+@media(max-width:700px){.main{grid-template-columns:1fr;height:auto;overflow:auto}}
+.sidebar{background:var(--card);border-right:1px solid var(--bord);display:flex;flex-direction:column;overflow:hidden}
+@media(max-width:700px){.sidebar{max-height:40vh;border-right:none;border-bottom:1px solid var(--bord)}}
+.content{display:flex;flex-direction:column;overflow:hidden;min-height:0}
+@media(max-width:700px){.content{height:60vh}}
+
+/* ── SIDEBAR ── */
+.sb-head{padding:.875rem 1rem;border-bottom:1px solid var(--bord);display:flex;align-items:center;justify-content:space-between}
+.sb-head-title{font-weight:600;font-size:.875rem;color:var(--txt2);text-transform:uppercase;letter-spacing:.06em}
+.sb-count{background:var(--card2);color:var(--txt2);font-size:.7rem;font-weight:600;padding:.15rem .5rem;border-radius:10px;border:1px solid var(--bord)}
+.vessel-list{flex:1;overflow-y:auto;padding:.5rem}
+.vessel-card{background:var(--card2);border:1px solid var(--bord);border-radius:var(--rad);padding:.875rem;margin-bottom:.5rem;cursor:pointer;transition:all .15s;position:relative}
+.vessel-card:hover{border-color:var(--p)}
+.vessel-card.active{border-color:var(--p);box-shadow:0 0 0 1px var(--pd)}
+.vessel-card.departed{opacity:.45;border-style:dashed}
+.vessel-card.sleeping{opacity:.55;border-style:dashed;border-color:var(--warn)}
+.vessel-card.sleeping .vc-name::after{content:' 💤';font-size:.7rem}
+.vc-head{display:flex;align-items:center;gap:.6rem;margin-bottom:.5rem}
+.vc-icon{font-size:1.25rem;line-height:1}
+.vc-name{font-weight:600;font-size:.9rem;color:var(--txt);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vc-type{font-size:.65rem;font-weight:600;padding:.1rem .4rem;border-radius:4px;border:1px solid;flex-shrink:0}
+.vc-type.bibbos{color:var(--p);border-color:var(--p);background:rgba(96,165,250,.1)}
+.vc-type.spm{color:var(--succ);border-color:var(--succ);background:rgba(16,185,129,.1)}
+.vc-type.masthead{color:var(--info);border-color:var(--info);background:rgba(167,139,250,.1)}
+.vc-type.gateway{color:var(--warn);border-color:var(--warn);background:rgba(245,158,11,.1)}
+.vc-meta{font-size:.72rem;color:var(--txt2);display:flex;flex-direction:column;gap:.2rem}
+.vc-row{display:flex;justify-content:space-between;gap:.5rem}
+.vc-row span:first-child{color:var(--txt3)}
+.health-bar{height:4px;background:var(--bord);border-radius:2px;margin-top:.5rem;overflow:hidden}
+.health-fill{height:100%;border-radius:2px;transition:width .4s}
+.sb-actions{padding:.875rem 1rem;border-top:1px solid var(--bord);display:flex;gap:.5rem}
+
+/* ── CONTENT: LOG ── */
+.log-head{padding:.875rem 1.25rem;border-bottom:1px solid var(--bord);display:flex;align-items:center;gap:.75rem;background:var(--card)}
+.log-head-title{font-weight:600;font-size:.875rem;color:var(--txt2);text-transform:uppercase;letter-spacing:.06em}
+.log-filters{display:flex;gap:.4rem;margin-left:.5rem;flex-wrap:wrap}
+.filter-chip{padding:.2rem .6rem;border-radius:12px;font-size:.7rem;font-weight:600;cursor:pointer;border:1px solid var(--bord);color:var(--txt2);background:var(--card2);transition:all .15s}
+.filter-chip.on{color:#fff;border-color:transparent}
+.filter-chip.all.on{background:var(--txt3)}
+.filter-chip.heartbeat.on{background:#334155}
+.filter-chip.status.on{background:var(--pd)}
+.filter-chip.sync.on{background:var(--info)}
+.filter-chip.directive.on{background:var(--warn);color:#000}
+.filter-chip.system.on{background:var(--card2);border-color:var(--txt3)}
+.filter-chip.departure.on{background:var(--dang)}
+.log-scroll{flex:1;overflow-y:auto;padding:.625rem;min-height:0}
+@media(max-width:700px){.log-scroll{max-height:calc(60vh - 110px)}}
+.log-entry{display:grid;grid-template-columns:70px 60px 1fr auto;gap:.5rem;align-items:baseline;padding:.4rem .625rem;border-radius:6px;margin-bottom:2px;font-size:.78rem;transition:background .1s}
+.log-entry:hover{background:var(--card2)}
+.le-time{color:var(--txt3);font-family:var(--mono);font-size:.7rem;white-space:nowrap}
+.le-type{font-size:.65rem;font-weight:700;padding:.1rem .35rem;border-radius:3px;text-align:center;white-space:nowrap}
+.le-msg{color:var(--txt);line-height:1.4;word-break:break-word}
+.le-size{color:var(--txt3);font-family:var(--mono);font-size:.65rem;white-space:nowrap}
+/* log type colours */
+.lt-heartbeat{background:rgba(100,116,139,.2);color:var(--txt3)}
+.lt-status{background:rgba(59,130,246,.2);color:var(--p)}
+.lt-approved{background:rgba(16,185,129,.2);color:var(--succ)}
+.lt-revision{background:rgba(245,158,11,.2);color:var(--warn)}
+.lt-directive{background:rgba(245,158,11,.3);color:var(--warn)}
+.lt-sync{background:rgba(167,139,250,.2);color:var(--info)}
+.lt-departure{background:rgba(239,68,68,.2);color:var(--dang)}
+.lt-join{background:rgba(16,185,129,.15);color:var(--succ)}
+.lt-system{background:rgba(100,116,139,.15);color:var(--txt2)}
+.lt-snapshot{background:rgba(96,165,250,.1);color:var(--p)}
+.lt-ping{background:rgba(100,116,139,.1);color:var(--txt3)}
+
+/* ── DETAIL PANEL — inline below vessel card ── */
+.vessel-detail{background:var(--card2);border:1px solid var(--p);border-radius:var(--rad);margin:.25rem 0 .5rem;padding:.875rem;display:none;font-size:.78rem}
+.vessel-detail.open{display:block}
+.vessel-detail .ds-title{font-size:.67rem;font-weight:700;color:var(--txt3);text-transform:uppercase;letter-spacing:.07em;margin:.75rem 0 .35rem;padding-bottom:.25rem;border-bottom:1px solid var(--bord)}
+.vessel-detail .ds-title:first-child{margin-top:0}
+/* hide old panel */
+.detail{display:none!important}
+.detail-section{margin-bottom:1.25rem}
+.ds-title{font-size:.7rem;font-weight:700;color:var(--txt3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.5rem;padding-bottom:.35rem;border-bottom:1px solid var(--bord)}
+.kv{display:flex;justify-content:space-between;gap:.5rem;padding:.25rem 0;font-size:.78rem;border-bottom:1px solid rgba(255,255,255,.03)}
+.kv-k{color:var(--txt2);flex-shrink:0}
+.kv-v{color:var(--txt);text-align:right;word-break:break-word}
+.kv-v.good{color:var(--succ)}.kv-v.warn{color:var(--warn)}.kv-v.bad{color:var(--dang)}
+
+/* ── DIRECTIVE PANEL ── */
+.directive-bar{background:var(--card);border-top:1px solid var(--bord);padding:.75rem 1.25rem;display:flex;gap:.75rem;align-items:center}
+.directive-input{flex:1;background:var(--card2);border:1px solid var(--bord);border-radius:6px;padding:.5rem .875rem;font-size:.85rem;color:var(--txt);outline:none;transition:border .15s}
+.directive-input:focus{border-color:var(--p)}
+.directive-input::placeholder{color:var(--txt3)}
+
+/* ── IDENTITY MODAL ── */
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:500;display:none;align-items:center;justify-content:center;padding:1rem}
+.modal.show{display:flex}
+.modal-box{background:var(--card);border:1px solid var(--bord);border-radius:var(--rad);width:100%;max-width:480px;box-shadow:0 12px 40px rgba(0,0,0,.5)}
+.mh{padding:1.25rem 1.5rem;border-bottom:1px solid var(--bord);display:flex;align-items:center;justify-content:space-between}
+.mh-title{font-weight:700;font-size:1rem;color:var(--p)}
+.mb{padding:1.5rem}
+.mf{padding:1rem 1.5rem;border-top:1px solid var(--bord);display:flex;gap:.75rem;justify-content:flex-end}
+.form-group{margin-bottom:1rem}
+.form-label{display:block;font-size:.8rem;font-weight:600;color:var(--txt2);margin-bottom:.375rem}
+.form-input{width:100%;background:var(--card2);border:1px solid var(--bord);border-radius:6px;padding:.5rem .75rem;font-size:.875rem;color:var(--txt);outline:none;transition:border .15s}
+.form-input:focus{border-color:var(--p)}
+.form-note{font-size:.72rem;color:var(--txt3);margin-top:.3rem}
+
+/* ── EMPTY ── */
+.empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.75rem;color:var(--txt3);padding:2rem;text-align:center}
+.empty-icon{font-size:2.5rem;opacity:.35}
+.empty-title{font-size:.9rem;font-weight:600}
+.empty-sub{font-size:.78rem;line-height:1.5}
+
+/* ── STATUS BADGE ── */
+.status-badge{display:inline-flex;align-items:center;gap:.3rem;font-size:.7rem;font-weight:600;padding:.15rem .5rem;border-radius:10px}
+.sb-ws{background:rgba(16,185,129,.15);color:var(--succ);border:1px solid rgba(16,185,129,.3)}
+.sb-bc{background:rgba(245,158,11,.15);color:var(--warn);border:1px solid rgba(245,158,11,.3)}
+.sb-off{background:rgba(100,116,139,.15);color:var(--txt3);border:1px solid var(--bord)}
+
+/* ── SCROLL ── */
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--bord);border-radius:2px}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="bar">
+  <div class="bar-logo">⬡</div>
+  <div>
+    <div class="bar-title">The Masthead</div>
+    <div class="bar-sub" id="bar-sub">Formation Oversight · v5.0</div>
+  </div>
+  <div class="bar-right" id="bar-right">
+    <div class="conn-dot" id="conn-dot"></div>
+    <span class="conn-label" id="conn-label">Connecting…</span>
+    <button class="btn btn-sec btn-sm" onclick="openIdentity()">⚙ Identity</button>
+    <button class="btn btn-sec btn-sm" id="btn-ping-all" onclick="pingAll()">↻ Ping All</button>
+    <button class="btn btn-dang btn-sm" onclick="clearLog()">✕ Clear Log</button>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- SIDEBAR: vessel registry -->
+  <div class="sidebar">
+    <div class="sb-head">
+      <span class="sb-head-title">Formation</span>
+      <span class="sb-count" id="vessel-count">0 vessels</span>
+    </div>
+    <div class="vessel-list" id="vessel-list">
+      <div class="empty" style="padding:2rem 1rem">
+        <div class="empty-icon">⬡</div>
+        <div class="empty-title">Awaiting formation</div>
+        <div class="empty-sub">Vessels appear here as they announce</div>
+      </div>
+    </div>
+    <div class="sb-actions">
+      <button class="btn btn-sec btn-sm" style="flex:1" onclick="pingAll()">↻ Request heartbeats</button>
+    </div>
+  </div>
+
+  <!-- LOG -->
+  <div class="content">
+    <div class="log-head">
+      <span class="log-head-title">Formation Log</span>
+      <div class="log-filters" id="log-filters">
+        <span class="filter-chip all on" data-filter="all" onclick="toggleFilter(this)">All</span>
+        <span class="filter-chip heartbeat on" data-filter="heartbeat" onclick="toggleFilter(this)">Arrive</span>
+        <span class="filter-chip departure on" data-filter="departure" onclick="toggleFilter(this)">Depart</span>
+        <span class="filter-chip status on" data-filter="status" onclick="toggleFilter(this)">Status</span>
+        <span class="filter-chip sync on" data-filter="sync" onclick="toggleFilter(this)">Sync</span>
+        <span class="filter-chip directive on" data-filter="directive" onclick="toggleFilter(this)">Directive</span>
+        <span class="filter-chip system on" data-filter="system" onclick="toggleFilter(this)">System</span>
+      </div>
+      <span id="log-count" style="margin-left:auto;font-size:.72rem;color:var(--txt3)">0 events</span>
+    </div>
+    <div class="log-scroll" id="log-scroll"></div>
+    <!-- DIRECTIVE BAR -->
+    <div class="directive-bar">
+      <input class="directive-input" id="directive-input" placeholder="Broadcast a directive to all vessels…" onkeydown="if(event.key==='Enter')sendDirective()">
+      <button class="btn btn-p btn-sm" onclick="sendDirective()">⬡ Broadcast</button>
+    </div>
+  </div>
+
+  <!-- Detail panel is now inline below each vessel card — see vessel-detail class -->
+
+</div>
+
+<!-- IDENTITY MODAL -->
+<div class="modal" id="identity-modal">
+  <div class="modal-box">
+    <div class="mh">
+      <span class="mh-title">⬡ Masthead Identity</span>
+      <button class="btn btn-sec btn-sm" onclick="closeIdentity()">✕</button>
+    </div>
+    <div class="mb">
+      <div class="form-group">
+        <label class="form-label">Masthead Name</label>
+        <input class="form-input" id="id-name" placeholder="e.g. Fleet Masthead · HQ" value="">
+        <div class="form-note">Shown to all vessels in the formation</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">◈ Formation Server URL</label>
+        <input class="form-input" id="id-server" placeholder="ws://172.20.10.5:8080 (blank = auto-detect)">
+        <div class="form-note">Server running server.js. Auto-detect works if Masthead is served from the same host.</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Operator Handle</label>
+        <input class="form-input" id="id-operator" placeholder="e.g. Fleet Commander">
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-sec" onclick="closeIdentity()">Cancel</button>
+      <button class="btn btn-p" onclick="saveIdentity()">Save & Reconnect</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// MASTHEAD v5 — Sovereign Formation Oversight
+// Connects directly to the Formation Hub via FormationTransport.
+// Works from any device, any browser on the LAN.
+// No BroadcastChannel dependency for core functionality.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── IDENTITY ─────────────────────────────────────────────────────────────────
+const ID_KEY = 'masthead_v5_identity';
+let identity = JSON.parse(localStorage.getItem(ID_KEY) || 'null') || {
+  name:      'The Masthead',
+  serverUrl: '',
+  operator:  ''
+};
+
+// ── STATE ─────────────────────────────────────────────────────────────────────
+const vessels   = new Map();   // vesselId → latest state payload
+const logItems  = [];          // [{ts, type, category, msg, bytes, vesselId}]
+const MAX_LOG   = 1000;
+let   transport = null;
+// activeFilters contains the active category names.
+// Special value 'all' means no filter — show everything.
+// Named categories: heartbeat, status, sync, directive, system
+let   activeFilters = new Set(['heartbeat','departure','status','sync','directive','system']);
+let   filterAll     = true; // true = show everything (All is on)
+let   selectedVessel = null;
+
+// ── TRANSPORT INIT ────────────────────────────────────────────────────────────
+function initTransport() {
+  if (transport) { try { transport.close(); } catch {} transport = null; }
+
+  const serverUrl = identity.serverUrl || FormationTransport.autoUrl();
+  transport = new FormationTransport({ serverUrl, debug: false });
+
+  transport.onmessage = e => handleMessage(e.data);
+
+  // On WS open: announce presence and request fresh heartbeats from all vessels
+  transport.onopen = function() {
+    announcePresence();
+    setTimeout(pingAll, 600); // small delay so snapshot is processed first
+  };
+
+  // Poll connection status for UI badge
+  if (!window._connPollActive) {
+    window._connPollActive = true;
+    setInterval(updateConnStatus, 1500);
+  }
+  updateConnStatus();
+
+  addLog('system', 'system', `Masthead connected → ${serverUrl || 'auto'}`, 0);
+}
+
+function updateConnStatus() {
+  const dot   = document.getElementById('conn-dot');
+  const label = document.getElementById('conn-label');
+  if (!transport) { dot.className='conn-dot'; label.textContent='Disconnected'; return; }
+  const btnPing = document.getElementById('btn-ping-all');
+  if (transport.connected) {
+    dot.className='conn-dot ws';
+    const count = vessels.size;
+    label.textContent='Hub · ' + count + ' vessel' + (count !== 1 ? 's' : '');
+    if (btnPing) btnPing.disabled = false;
+  } else if (transport.mode === 'bc') {
+    dot.className='conn-dot bc';
+    label.textContent='Standalone · BroadcastChannel';
+    if (btnPing) btnPing.disabled = false;
+  } else {
+    dot.className='conn-dot';
+    label.textContent='Connecting…';
+    if (btnPing) btnPing.disabled = true;
+  }
+}
+
+// ── MESSAGE HANDLER ───────────────────────────────────────────────────────────
+function handleMessage(msg) {
+  if (!msg || !msg._type) return;
+  const type = msg._type;
+  const bytes = JSON.stringify(msg).length;
+
+
+  // ── Formation hub messages ────────────────────────────────────────────────
+  if (type === 'formation_snapshot') {
+    const count = (msg.vessels||[]).length;
+    addLog('snapshot', 'system', `Hub snapshot received — ${count} vessel(s) in formation`, bytes);
+    (msg.vessels||[]).forEach(v => {
+      if (v.vesselId) {
+        v._lastSeen = v._lastSeen || Date.now();
+        vessels.set(v.vesselId, v);
+      }
+    });
+    renderVesselList();
+    // Request fresh heartbeats — snapshot data may be stale
+    if (count > 0) setTimeout(pingAll, 400);
+    return;
+  }
+
+  if (type === 'formation_departure') {
+    const name = msg.entityName || msg.projectName || msg.label || msg.vesselId || 'unknown';
+    // Suppress anonymous departures — vessel connected but never sent a heartbeat
+    // so it was never known to Masthead. Logging an IP address adds noise, not signal.
+    const isAnonymous = !msg.entityName && !msg.projectName
+                     && (!msg.label || msg.label.startsWith('::ffff:') || msg.label.startsWith('192.168') || msg.label.startsWith('172.'));
+    if (msg.vesselId) {
+      const v = vessels.get(msg.vesselId);
+      if (v) {
+        // Mark sleeping — show dimmed for up to 10s, then remove
+        v._sleeping = true;
+        v._sleepAt  = Date.now();
+        renderVesselList();
+        setTimeout(() => {
+          const cur = vessels.get(msg.vesselId);
+          if (cur && cur._sleeping) {
+            vessels.delete(msg.vesselId);
+            if (!isAnonymous) addLog('departure', 'departure', `${name} departed`, bytes, msg.vesselId);
+            if (selectedVessel === msg.vesselId) { selectedVessel = null; }
+            renderVesselList();
+          }
+        }, 10000);
+      } else {
+        // Vessel wasn't tracked — only log if it had a real name
+        if (!isAnonymous) addLog('departure', 'departure', `${name} departed`, bytes, msg.vesselId);
+      }
+    }
+    return;
+  }
+
+  if (type === 'formation_sync_ack') {
+    const name = msg.label || msg.vesselId || 'Vessel';
+    addLog('sync', 'sync', `${name} synced offline event (${msg.eventType||'?'})`, bytes, msg.vesselId);
+    return;
+  }
+
+  // ── BiBBOS heartbeat ──────────────────────────────────────────────────────
+  if (type === 'bibbos_formation_heartbeat') {
+    const name = msg.entityName || 'Unknown Entity';
+    const icon = msg.entityIcon || '🏢';
+    const intentCount = (msg._intentions||[]).length;
+    msg._app = msg._app || 'bibbos';
+    msg._lastSeen = Date.now();
+    const _wasKnown    = msg.vesselId ? !!vessels.get(msg.vesselId) : false;
+    const _wasSleeping = msg.vesselId ? !!(vessels.get(msg.vesselId)||{})._sleeping : false;
+    msg._sleeping = false;
+    if (msg.vesselId) vessels.set(msg.vesselId, msg);
+    if (!_wasKnown) {
+      // First time we've seen this vessel — log "joined"
+      addLog('heartbeat', 'heartbeat', `${icon} ${name} joined`, bytes, msg.vesselId);
+    } else if (_wasSleeping) {
+      // Vessel was departing (sleep state) and came back
+      addLog('heartbeat', 'heartbeat', `${icon} ${name} rejoined`, bytes, msg.vesselId);
+    } else {
+      // Known vessel — log ongoing status so operator sees formation activity
+      addLog('heartbeat', 'heartbeat',
+        `${icon} ${name} · ${intentCount} intention(s)`,
+        bytes, msg.vesselId);
+    }
+    renderVesselList();
+    if (selectedVessel === msg.vesselId) renderDetail(msg.vesselId);
+    return;
+  }
+
+  // ── SPM heartbeat ─────────────────────────────────────────────────────────
+  if (type === 'spm_formation_heartbeat') {
+    const name    = msg.projectName || 'Unnamed Project';
+    const health  = msg.healthScore != null ? msg.healthScore : '—';
+    const steward = msg.steward || '';
+    msg._app = msg._app || 'spm';
+    msg._lastSeen = Date.now();
+    const _wasKnown    = msg.vesselId ? !!vessels.get(msg.vesselId) : false;
+    const _wasSleeping = msg.vesselId ? !!(vessels.get(msg.vesselId)||{})._sleeping : false;
+    msg._sleeping = false;
+    if (msg.vesselId) vessels.set(msg.vesselId, msg);
+    if (!_wasKnown) {
+      addLog('heartbeat', 'heartbeat',
+        `📋 ${name}${steward?' · '+steward:''} joined`,
+        bytes, msg.vesselId);
+    } else if (_wasSleeping) {
+      addLog('heartbeat', 'heartbeat',
+        `📋 ${name}${steward?' · '+steward:''} rejoined`,
+        bytes, msg.vesselId);
+    } else {
+      // Known vessel — log ongoing health so operator sees project status
+      addLog('heartbeat', 'heartbeat',
+        `📋 ${name}${steward?' · '+steward:''} · health ${health}`,
+        bytes, msg.vesselId);
+    }
+    renderVesselList();
+    if (selectedVessel === msg.vesselId) renderDetail(msg.vesselId);
+    return;
+  }
+
+  // ── BiBBOS intention status push ─────────────────────────────────────────
+  if (type === 'bibbos_intention_status') {
+    const entity  = msg.entityName || 'BiBBOS';
+    const ev      = msg._event || 'status';
+    const intName = (msg.intention && msg.intention.name) || 'intention';
+    const evLabel = {
+      approved:           '✅ approved',
+      'revision-requested': '↩ revision requested',
+      issued:             '⬡ issued',
+      completed:          '✔ completed'
+    }[ev] || ev;
+
+    const cat = ev === 'approved' ? 'approved'
+              : ev === 'revision-requested' ? 'revision'
+              : 'status';
+    addLog(cat, 'status',
+      `${entity} · ${intName} → ${evLabel}`,
+      bytes, msg.vesselId);
+    return;
+  }
+
+  // ── BiBBOS departure ──────────────────────────────────────────────────────
+  if (type === 'bibbos_formation_departure') {
+    const name = msg.entityName || msg.vesselId || 'Entity';
+    // Only log departure if we actually knew this vessel
+    if (msg.vesselId) {
+      const _vd = vessels.get(msg.vesselId);
+      if (_vd) {
+        _vd._sleeping = true; _vd._sleepAt = Date.now();
+        renderVesselList();
+        setTimeout(() => {
+          const _cur = vessels.get(msg.vesselId);
+          if (_cur && _cur._sleeping) {
+            vessels.delete(msg.vesselId);
+            addLog('departure', 'departure', `${name} departed`, bytes, msg.vesselId);
+            if (selectedVessel === msg.vesselId) selectedVessel = null;
+            renderVesselList();
+          }
+        }, 10000);
+      }
+      // If vessel wasn't tracked, depart silently — no noise for vessels we never saw
+    }
+    return;
+  }
+
+  // ── Masthead ping (another Masthead on network requesting snapshot) ────────
+  if (type === 'masthead_ping') {
+    // Ignore echo of our own pings
+    if ((msg._from || '').startsWith('masthead-v5')) return;
+    // Ignore SPM internal diagnostic pings (not addressed to masthead)
+    const _from = msg._from || '';
+    if (_from.startsWith('spm-') || _from.startsWith('bibbos-')) return;
+    addLog('ping', 'system', `Ping from ${_from || 'vessel'} — responding`, bytes);
+    announcePresence();
+    return;
+  }
+
+  // ── Gateway system relay notice ───────────────────────────────────────────
+  if (type === 'gateway_systemRelay') {
+    addLog('system', 'system', `Gateway: ${msg.message || 'relay event'}`, bytes);
+    return;
+  }
+
+  // ── Unknown / pass-through ────────────────────────────────────────────────
+  if (type && type !== 'formation_pong' && type !== 'formation_ping' && type !== 'masthead_directive') {
+    addLog('system', 'system', `${type} · ${(msg.vesselId||msg.entityName||msg.projectName||'')}`, bytes, msg.vesselId);
+  }
+}
+
+// ── ANNOUNCE PRESENCE ─────────────────────────────────────────────────────────
+// ── Registry poll — HTTP fallback to keep vessel list current ────────────────
+function pollRegistry() {
+  if (!transport || !transport.connected) return;
+  const serverUrl = (identity.serverUrl || FormationTransport.autoUrl())
+    .replace(/^ws/, 'http').replace(/\/formation$/, '');
+  fetch(serverUrl + '/api/formation/registry')
+    .then(r => r.json())
+    .then(data => {
+      if (!data.ok || !Array.isArray(data.vessels)) return;
+      let changed = false;
+      data.vessels.forEach(v => {
+        if (!v.vesselId) return;
+        const existing = vessels.get(v.vesselId);
+        if (!existing || (v._lastSeen && v._lastSeen > (existing._lastSeen||0))) {
+          v._app = v._app || (v.entityName && !v.projectName ? 'bibbos'
+                             : v.projectName && !v.entityName ? 'spm' : 'vessel');
+          v._lastSeen = v._lastSeen || Date.now();
+          const isNew = !existing;
+          vessels.set(v.vesselId, v);
+          changed = true;
+          if (isNew) {
+            const icon = v.entityIcon || (v._app==='spm' ? '📋' : '🏢');
+            const vname = v.entityName || v.projectName || v.vesselId.slice(0,12);
+            addLog('heartbeat', 'heartbeat', `${icon} ${vname} joined`, 0, v.vesselId);
+          }
+        }
+      });
+      // Remove vessels no longer in registry (departed)
+      vessels.forEach((v, id) => {
+        if (!v._sleeping && !data.vessels.find(rv => rv.vesselId === id)) {
+          vessels.delete(id);
+          changed = true;
+        }
+      });
+      if (changed) renderVesselList();
+    })
+    .catch(() => {}); // silent — server may be unreachable
+}
+
+function announcePresence() {
+  if (!transport) return;
+  transport.postMessage({
+    _type:     'masthead_heartbeat',
+    _app:      'masthead',
+    vesselId:  'masthead_' + getOrCreateId(),
+    name:      identity.name || 'The Masthead',
+    operator:  identity.operator || '',
+    ts:        new Date().toISOString()
+  });
+}
+
+let _mastheadId = null;
+function getOrCreateId() {
+  if (_mastheadId) return _mastheadId;
+  _mastheadId = localStorage.getItem('masthead_v5_id');
+  if (!_mastheadId) {
+    _mastheadId = crypto.randomUUID ? crypto.randomUUID().slice(0,8)
+                 : Math.random().toString(36).slice(2,10);
+    localStorage.setItem('masthead_v5_id', _mastheadId);
+  }
+  return _mastheadId;
+}
+
+// ── PING ALL ─────────────────────────────────────────────────────────────────
+let _lastPingAt = 0;
+function pingAll() {
+  if (!transport) return;
+  const now = Date.now();
+  if (now - _lastPingAt < 3000) return; // debounce — max once per 3s
+  _lastPingAt = now;
+  const pingPayload = { _type:'masthead_ping', targetVesselId:'*', _from:'masthead-v5', ts: new Date().toISOString() };
+
+  // Send via transport (WS → hub fans to all, or BC when standalone)
+  transport.postMessage(pingPayload);
+
+  // Only send raw BC when NOT connected to hub — avoids double-ping:
+  // When WS active: hub fans ping to all clients including same-browser BiBBOS.
+  // Raw BC would deliver a SECOND copy to same-browser vessels → double heartbeat.
+  if (!transport.connected) {
+    try { const bc=new BroadcastChannel('spm-formation'); bc.postMessage(pingPayload); bc.close(); } catch(e){}
+  }
+
+  const n = vessels.size;
+  addLog('ping', 'system', `↻ Heartbeat requested — ${n} vessel${n!==1?'s':''} in formation`, 0);
+}
+
+// ── SEND DIRECTIVE ────────────────────────────────────────────────────────────
+function sendDirective() {
+  const input = document.getElementById('directive-input');
+  const msg   = (input.value || '').trim();
+  if (!msg || !transport) return;
+  const payload = {
+    _type:    'masthead_directive',
+    message:  msg,
+    operator: identity.operator || identity.name || 'Masthead',
+    ts:       new Date().toISOString()
+  };
+  // Directives must reach ALL vessels — send via WS (cross-device) AND BC (same-browser)
+  transport.postMessage(payload);
+  // Also post directly to BroadcastChannel for same-browser vessels
+  try {
+    const bc = new BroadcastChannel('spm-formation');
+    bc.postMessage(payload);
+    bc.close();
+  } catch(e) {}
+  addLog('directive', 'directive', `⬡ Directive: "${msg}"`, JSON.stringify(payload).length);
+  input.value = '';
+}
+
+// ── LOG ───────────────────────────────────────────────────────────────────────
+const LOG_LABELS = {
+  heartbeat: { label:'HB',   cls:'lt-heartbeat' },
+  status:    { label:'STATUS', cls:'lt-status'  },
+  approved:  { label:'APPR', cls:'lt-approved'  },
+  revision:  { label:'REV',  cls:'lt-revision'  },
+  directive: { label:'DIR',  cls:'lt-directive' },
+  sync:      { label:'SYNC', cls:'lt-sync'      },
+  departure: { label:'DEP',  cls:'lt-departure' },
+  join:      { label:'JOIN', cls:'lt-join'      },
+  system:    { label:'SYS',  cls:'lt-system'    },
+  snapshot:  { label:'SNAP', cls:'lt-snapshot'  },
+  ping:      { label:'PING', cls:'lt-ping'      }
+};
+
+function addLog(type, category, msg, bytes, vesselId) {
+  const ts = new Date();
+  const entry = { ts, type, category, msg, bytes, vesselId: vesselId||null };
+  logItems.unshift(entry);
+  if (logItems.length > MAX_LOG) logItems.pop();
+
+  const el = buildLogEntry(entry, 0);
+  if (el) {
+    const scroll = document.getElementById('log-scroll');
+    const empty  = scroll.querySelector('.empty');
+    if (empty) empty.remove();
+    scroll.insertBefore(el, scroll.firstChild);
+    // Keep max rendered entries
+    while (scroll.children.length > MAX_LOG) scroll.removeChild(scroll.lastChild);
+  }
+  document.getElementById('log-count').textContent = logItems.length + ' events';
+}
+
+function buildLogEntry(entry, _unused) {
+  const { ts, type, category, msg, bytes } = entry;
+  // Filter — show if filterAll, or if category is in active set
+  if (!filterAll) {
+    if (!category || !activeFilters.has(category)) return null;
+  }
+
+  const meta  = LOG_LABELS[type] || LOG_LABELS.system;
+  const time  = ts.toTimeString().slice(0,8);
+  const bStr  = bytes > 0 ? formatBytes(bytes) : '';
+
+  const el = document.createElement('div');
+  el.className = 'log-entry';
+  el.dataset.type = type;
+  el.dataset.cat  = category;
+  el.innerHTML =
+    `<span class="le-time">${esc(time)}</span>` +
+    `<span class="le-type ${meta.cls}">${meta.label}</span>` +
+    `<span class="le-msg">${esc(msg)}</span>` +
+    `<span class="le-size">${esc(bStr)}</span>`;
+  return el;
+}
+
+function rebuildLog() {
+  const scroll = document.getElementById('log-scroll');
+  scroll.innerHTML = '';
+  if (!logItems.length) {
+    scroll.innerHTML = `<div class="empty"><div class="empty-icon">⬡</div><div class="empty-title">No events yet</div><div class="empty-sub">Formation messages will appear here</div></div>`;
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  for (const entry of logItems) {
+    const el = buildLogEntry(entry);
+    if (el) frag.appendChild(el);
+  }
+  scroll.appendChild(frag);
+  document.getElementById('log-count').textContent = logItems.length + ' events';
+}
+
+function clearLog() {
+  logItems.length = 0;
+  rebuildLog();
+}
+
+// ── FILTERS ──────────────────────────────────────────────────────────────────
+function toggleFilter(chip) {
+  const f = chip.dataset.filter;
+  const ALL_CATS = ['heartbeat','departure','status','sync','directive','system'];
+
+  if (f === 'all') {
+    // All button: toggle between show-all and show-none
+    filterAll = !filterAll;
+    if (filterAll) {
+      activeFilters = new Set(ALL_CATS);
+      document.querySelectorAll('.filter-chip').forEach(c => c.classList.add('on'));
+    } else {
+      activeFilters.clear();
+      document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('on'));
+    }
+  } else {
+    // Toggle individual category
+    if (activeFilters.has(f)) {
+      activeFilters.delete(f);
+      chip.classList.remove('on');
+    } else {
+      activeFilters.add(f);
+      chip.classList.add('on');
+    }
+    // Update All button state
+    filterAll = activeFilters.size === ALL_CATS.length;
+    const allChip = document.querySelector('.filter-chip.all');
+    if (allChip) allChip.classList.toggle('on', filterAll);
+  }
+  rebuildLog();
+}
+
+// ── VESSEL LIST ───────────────────────────────────────────────────────────────
+function renderVesselList() {
+  const list  = document.getElementById('vessel-list');
+  const count = document.getElementById('vessel-count');
+  const active = [];
+  vessels.forEach((v, id) => { active.push({ id, v }); });
+  count.textContent = active.length + ' vessel' + (active.length !== 1 ? 's' : '');
+
+  if (!active.length) {
+    list.innerHTML = `<div class="empty" style="padding:2rem 1rem"><div class="empty-icon">⬡</div><div class="empty-title">Awaiting formation</div><div class="empty-sub">Vessels appear here as they announce</div></div>`;
+    return;
+  }
+
+  // Sort: BiBBOS first, then SPM, then others
+  const order = { bibbos:0, spm:1, masthead:2, gateway:3 };
+  active.sort((a,b) => (order[a.v._app]??9) - (order[b.v._app]??9));
+
+  list.innerHTML = '';
+  // Only show active vessels — departed are removed immediately on departure event
+  active.forEach(({ id, v }) => {
+    list.appendChild(buildVesselCard(id, v));
+    // If this vessel is selected, inject inline detail immediately below
+    if (selectedVessel === id) {
+      const detailEl = document.createElement('div');
+      detailEl.className = 'vessel-detail open';
+      detailEl.id = 'inline-detail-' + id;
+      detailEl.innerHTML = buildDetailHTML(id, v);
+      list.appendChild(detailEl);
+    }
+  });
+}
+
+function buildVesselCard(id, v) {
+  // Detect vessel type from multiple signals
+  const app = v._app
+    || (v._type && v._type.startsWith('bibbos') ? 'bibbos'
+       : v._type && v._type.startsWith('spm')   ? 'spm'
+       : v.entityName && !v.projectName          ? 'bibbos'
+       : v.projectName && !v.entityName          ? 'spm'
+       : v.healthScore != null                   ? 'spm'
+       : v.financialSummary                      ? 'bibbos'
+       : 'vessel');
+  const isBib   = app === 'bibbos';
+  const isSPM   = app === 'spm';
+  const name    = v.entityName || v.projectName || id.slice(0,12);
+  const icon    = v.entityIcon || (isSPM ? '📋' : isBib ? '🏢' : '⬡');
+  const isSelec = selectedVessel === id;
+
+  let healthHtml = '';
+  if (isSPM && v.healthScore != null) {
+    const pct = Math.min(100, Math.max(0, v.healthScore));
+    const col = pct >= 70 ? 'var(--succ)' : pct >= 40 ? 'var(--warn)' : 'var(--dang)';
+    healthHtml = `<div class="health-bar"><div class="health-fill" style="width:${pct}%;background:${col}"></div></div>`;
+  }
+
+  let metaHtml = '';
+  if (isBib) {
+    const fin = v.financialSummary || {};
+    const int = v.intentionsSummary || {};
+    metaHtml = `
+      <div class="vc-row"><span>Intentions</span><span>${int.total||0} total · ${int.issued||0} active</span></div>
+      <div class="vc-row"><span>Cash</span><span>${v.sym||'$'}${fmt(fin.cash||0)}</span></div>
+      ${v.loc ? `<div class="vc-row"><span>Location</span><span>${esc(v.loc)}</span></div>` : ''}`;
+  } else if (isSPM) {
+    const band  = v.healthBand || '';
+    const phase = v.phaseSummary ? v.phaseSummary.name : '';
+    metaHtml = `
+      <div class="vc-row"><span>Health</span><span style="color:${healthCol(v.healthScore)}">${v.healthScore != null ? v.healthScore+'%' : '—'}${band?' · '+band:''}</span></div>
+      ${phase ? `<div class="vc-row"><span>Phase</span><span>${esc(phase)}</span></div>` : ''}
+      <div class="vc-row"><span>Status</span><span>${esc(v.status||'—')}</span></div>`;
+  }
+
+  const ago = v._lastSeen ? timeAgo(v._lastSeen) : '';
+
+  const el = document.createElement('div');
+  el.className = `vessel-card${isSelec?' active':''}${v._sleeping?' sleeping':''}`;
+  el.onclick   = () => selectVessel(id);
+  el.innerHTML = `
+    <div class="vc-head">
+      <span class="vc-icon">${icon}</span>
+      <span class="vc-name" title="${esc(name)}">${esc(name)}</span>
+      <span class="vc-type ${app}">${app.toUpperCase()}</span>
+    </div>
+    <div class="vc-meta">
+      ${metaHtml}
+      <div class="vc-row" style="margin-top:.25rem"><span>Last seen</span><span style="color:${v._sleeping?'var(--warn)':'var(--txt3)'}">${v._sleeping?'Reconnecting…':ago}</span></div>
+    </div>
+    ${healthHtml}`;
+  return el;
+}
+
+// ── DETAIL PANEL ─────────────────────────────────────────────────────────────
+function selectVessel(id) {
+  // Toggle: clicking same vessel closes detail; clicking new one opens it
+  if (selectedVessel === id) {
+    selectedVessel = null;
+    const open = document.querySelector('.vessel-detail.open');
+    if (open) { open.classList.remove('open'); open.innerHTML = ''; }
+    renderVesselList();
+    return;
+  }
+  selectedVessel = id;
+  renderVesselList(); // re-renders with new selected state, injects detail inline
+}
+
+function closeDetail() {
+  selectedVessel = null;
+  const open = document.querySelector('.vessel-detail.open');
+  if (open) { open.classList.remove('open'); open.innerHTML = ''; }
+  renderVesselList();
+}
+
+function renderDetail(id) {
+  const v = vessels.get(id);
+  if (!v) return;
+  // Detail is now inline — this function is kept for compat but not called
+}
+
+function buildDetailHTML(id, v) {
+  const app = v._app
+    || (v._type && v._type.startsWith('bibbos') ? 'bibbos'
+       : v._type && v._type.startsWith('spm')   ? 'spm'
+       : v.entityName && !v.projectName         ? 'bibbos'
+       : v.projectName && !v.entityName         ? 'spm'
+       : v.healthScore != null                  ? 'spm'
+       : v.financialSummary                     ? 'bibbos'
+       : 'vessel');
+  const isBib = app === 'bibbos';
+  const isSPM = app === 'spm';
+  let html = '';
+
+  // ── Identity ──────────────────────────────────────────────────────────────
+  html += `<div class="detail-section"><div class="ds-title">Identity</div>`;
+  html += kv('Type', app.toUpperCase());
+  html += kv('Vessel ID', (id||'').slice(0,20)+'…');
+  if (v.entityType)  html += kv('Entity Type', v.entityType);
+  if (v.industry)    html += kv('Industry', v.industry);
+  if (v.loc)         html += kv('Location', v.loc);
+  if (v.established) html += kv('Established', v.established);
+  if (v.fingerprint) html += kv('Fingerprint', v.fingerprint.slice(0,12)+'…');
+  if (v.steward)     html += kv('Steward', v.steward + (v.stewardRole?' · '+v.stewardRole:''));
+  if (v.sovereignContact) html += kv('Sovereign Contact', v.sovereignContact);
+  html += `</div>`;
+
+  // ── BiBBOS: Financial + Intentions ───────────────────────────────────────
+  if (isBib) {
+    const fin = v.financialSummary || {};
+    html += `<div class="detail-section"><div class="ds-title">Financial Snapshot</div>`;
+    html += kv('Revenue',  `${v.sym||'$'}${fmt(fin.revenue||0)}`);
+    html += kv('Expenses', `${v.sym||'$'}${fmt(fin.expenses||0)}`);
+    html += kv('Cash',     `${v.sym||'$'}${fmt(fin.cash||0)}`, fin.cash >= 0 ? 'good' : 'bad');
+    html += kv('Invoices', `${fin.invoices||0} total · ${fin.pending||0} pending`);
+    if (fin.overdueInvoices) html += kv('Overdue', fin.overdueInvoices, 'bad');
+    html += `</div>`;
+
+    const ppl = v.peopleSummary || {};
+    html += `<div class="detail-section"><div class="ds-title">People</div>`;
+    html += kv('Customers', ppl.customers||0);
+    html += kv('Vendors',   ppl.vendors||0);
+    html += kv('Employees', ppl.employees||0);
+    html += `</div>`;
+
+    const ints = v._intentions || [];
+    if (ints.length) {
+      html += `<div class="detail-section"><div class="ds-title">Intentions (${ints.length})</div>`;
+      ints.forEach(i => {
+        const stcol = i.status==='active'?'var(--succ)':i.status==='approved'?'var(--p)':i.status==='idea'?'var(--txt3)':'var(--warn)';
+        html += `<div style="padding:.4rem 0;border-bottom:1px solid var(--bord);font-size:.78rem">
+          <div style="font-weight:600;color:var(--txt);margin-bottom:.2rem">${esc(i.name||'Unnamed')}</div>
+          <div style="display:flex;gap:.75rem;color:var(--txt2)">
+            <span style="color:${stcol}">${esc(i.status||'—')}</span>
+            ${i.sector?`<span>${esc(i.sector)}</span>`:''}
+            ${i.targetDate?`<span>Due: ${esc(i.targetDate)}</span>`:''}
+          </div>
+        </div>`;
+      });
+      html += `</div>`;
+    }
+  }
+
+  // ── SPM: Project health + phases ──────────────────────────────────────────
+  if (isSPM) {
+    html += `<div class="detail-section"><div class="ds-title">Project Health</div>`;
+    const col = healthCol(v.healthScore);
+    html += kv('Health Score', v.healthScore != null ? v.healthScore+'%' : '—', v.healthScore >= 70 ? 'good' : v.healthScore >= 40 ? 'warn' : 'bad');
+    html += kv('Health Band',  v.healthBand||'—');
+    html += kv('Status',       v.status||'—');
+    html += kv('Mode',         v.mode||'—');
+    html += kv('Sector',       v.projectSector||'—');
+    html += `</div>`;
+
+    const cs = v.commitSummary || {};
+    html += `<div class="detail-section"><div class="ds-title">Commitments</div>`;
+    html += kv('Open',    cs.open||0);
+    html += kv('Kept',    cs.kept||0, 'good');
+    html += kv('Drifted', cs.drifted||0, (cs.drifted||0)>0?'warn':'');
+    html += kv('Overdue', cs.overdue||0, (cs.overdue||0)>0?'bad':'');
+    html += `</div>`;
+
+    const rs = v.riskSummary || {};
+    html += `<div class="detail-section"><div class="ds-title">Issues & Risks</div>`;
+    html += kv('Open Issues',    (v.issueSummary||{}).open||0);
+    html += kv('Critical Issues',(v.issueSummary||{}).critical||0, (v.issueSummary||{}).critical>0?'bad':'');
+    html += kv('Open Risks',     rs.open||0);
+    html += kv('High Risks',     rs.high||0, rs.high>0?'warn':'');
+    html += `</div>`;
+
+    const ph = v.phaseSummary;
+    if (ph) {
+      html += `<div class="detail-section"><div class="ds-title">Active Phase</div>`;
+      html += kv('Phase', ph.name||'—');
+      html += kv('Planned End', ph.plannedEnd||'—');
+      html += kv('Gate Ready', ph.gateReady!=null ? (ph.gateReady?'Yes':'No') : '—');
+      html += `</div>`;
+    }
+
+    const re = v.recentEvent;
+    if (re) {
+      html += `<div class="detail-section"><div class="ds-title">Recent Event</div>`;
+      html += kv('Level', re.level||'—');
+      html += kv('Message', re.msg||'—');
+      html += `</div>`;
+    }
+
+    if (v.submission) {
+      html += `<div class="detail-section" style="border:1px solid var(--warn);border-radius:6px;padding:.75rem"><div class="ds-title" style="color:var(--warn)">⏳ Pending Approval</div>`;
+      html += kv('Submitted', v.submission.ts ? new Date(v.submission.ts).toLocaleString() : '—');
+      html += kv('Health', v.submission.health+'%');
+      if (v.submission.note) html += kv('Note', v.submission.note);
+      html += `</div>`;
+    }
+
+    const integ = v.integrity;
+    if (integ) {
+      html += `<div class="detail-section"><div class="ds-title">Integrity</div>`;
+      html += kv('Score', integ.pct+'%', integ.pct>=80?'good':integ.pct>=50?'warn':'bad');
+      html += kv('Label', integ.label||'—');
+      html += `</div>`;
+    }
+  }
+
+  // ── Connection info ──────────────────────────────────────────────────────
+  html += `<div class="detail-section"><div class="ds-title">Connection</div>`;
+  html += kv('Last Seen', v._lastSeen ? new Date(v._lastSeen).toLocaleTimeString() : '—');
+  html += kv('Transport', v.formationMode || '—');
+  if (v._remoteIP) html += kv('Remote IP', v._remoteIP);
+  html += `</div>`;
+
+  // ── Actions ───────────────────────────────────────────────────────────────
+  html += `<div style="display:flex;gap:.5rem;margin-top:.75rem">
+    <button class="btn btn-sec btn-sm" style="flex:1" onclick="pingVessel('${id}')">↻ Ping</button>
+    <button class="btn btn-sec btn-sm" style="flex:1" onclick="openDirectiveTo('${id}')">⬡ Directive</button>
+    <button class="btn btn-sec btn-sm" onclick="closeDetail()">✕</button>
+  </div>`;
+  return html;
+}
+
+function pingVessel(vesselId) {
+  if (!transport) return;
+  const payload = { _type:'masthead_ping', targetVesselId:vesselId, _from:'masthead-v5-detail', ts: new Date().toISOString() };
+  transport.postMessage(payload);
+  try { const bc=new BroadcastChannel('spm-formation'); bc.postMessage(payload); bc.close(); } catch(e){}
+  const v = vessels.get(vesselId);
+  const name = v ? (v.entityName || v.projectName || vesselId.slice(0,12)) : vesselId.slice(0,12);
+  addLog('ping', 'system', `↻ Ping → ${name}`, 0);
+}
+
+function openDirectiveTo(vesselId) {
+  const input = document.getElementById('directive-input');
+  input.focus();
+  input.placeholder = `Directive to ${(vessels.get(vesselId)||{}).entityName || vesselId.slice(0,12)}…`;
+}
+
+// ── IDENTITY MODAL ────────────────────────────────────────────────────────────
+function openIdentity() {
+  document.getElementById('id-name').value     = identity.name || '';
+  document.getElementById('id-server').value   = identity.serverUrl || '';
+  document.getElementById('id-operator').value = identity.operator || '';
+  document.getElementById('identity-modal').classList.add('show');
+}
+
+function closeIdentity() {
+  document.getElementById('identity-modal').classList.remove('show');
+}
+
+function saveIdentity() {
+  identity.name      = document.getElementById('id-name').value.trim() || 'The Masthead';
+  identity.serverUrl = document.getElementById('id-server').value.trim();
+  identity.operator  = document.getElementById('id-operator').value.trim();
+  localStorage.setItem(ID_KEY, JSON.stringify(identity));
+  closeIdentity();
+  // Reconnect with new server URL
+  vessels.clear();
+  renderVesselList();
+  initTransport();
+  addLog('system', 'system', `Identity saved — reconnecting as "${identity.name}"`, 0);
+}
+
+// ── UTILS ─────────────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function fmt(n) {
+  return Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+function formatBytes(b) {
+  if (b < 1024) return b+'B';
+  return (b/1024).toFixed(1)+'KB';
+}
+function timeAgo(ms) {
+  const d = Date.now() - ms;
+  if (d < 3000)  return 'just now';
+  if (d < 60000) return Math.round(d/1000)+'s ago';
+  if (d < 3600000) return Math.round(d/60000)+'m ago';
+  return Math.round(d/3600000)+'h ago';
+}
+function healthCol(score) {
+  if (score == null) return 'var(--txt2)';
+  if (score >= 70) return 'var(--succ)';
+  if (score >= 40) return 'var(--warn)';
+  return 'var(--dang)';
+}
+function kv(k, v, cls='') {
+  return `<div class="kv"><span class="kv-k">${esc(k)}</span><span class="kv-v ${cls}">${esc(String(v))}</span></div>`;
+}
+
+// ── BOOT ─────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  // First run — open identity if no server configured and auto-url is not obvious
+  const hasConfig = identity.serverUrl || window.location.hostname !== 'localhost';
+
+  rebuildLog();
+  renderVesselList();
+  initTransport();
+
+  // Announce via BC immediately (standalone)
+  setTimeout(announcePresence, 200);
+  // Note: transport.onopen is set inside initTransport — pings all on WS connect
+
+  // Periodic time-ago refresh and vessel data freshness
+  setInterval(() => {
+    if (vessels.size) renderVesselList();
+  }, 15000);
+  // Periodic ping every 30s — request fresh heartbeats
+  setInterval(() => {
+    if (transport && transport.connected) pingAll();
+  }, 30000);
+
+  // Registry poll every 8s — fallback to ensure vessel list stays current
+  // even if WS heartbeats aren't arriving (supplements the WS path)
+  setInterval(pollRegistry, 8000);
+
+  // If first run and no server URL, prompt identity config
+  if (!hasConfig) {
+    setTimeout(openIdentity, 500);
+  }
+
+  document.getElementById('bar-sub').textContent =
+    `Formation Oversight · v5.0 · ${identity.name}`;
+});
+</script>
+</body>
+</html>
