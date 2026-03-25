@@ -1652,7 +1652,7 @@ const accts=StorageHelper.getVesselData('accounts');
 if(accts){this.accounts=accts;this.accountingMode=true;}
 else{this.initializeAccounts();} // Initialize default chart of accounts
 const je=StorageHelper.getVesselData('journal');
-if(je){this.journalEntries=je;if(je.length)this.nxt.je=Math.max(...je.map(x=>x.id))+1;}
+if(je){this.journalEntries=je;if(je.length){const _numIds=je.map(x=>x.id).filter(x=>typeof x==='number'||(!isNaN(x)&&x!==''));this.nxt.je=_numIds.length?Math.max(..._numIds.map(Number))+1:1;}}
 this.rebuildLedger(); // Compute balances
 
 // ── Migrate legacy project JEs (one-time, non-destructive) ──────────────────
@@ -2128,7 +2128,7 @@ return base+sep+'client_reference_id='+encodeURIComponent(inv.num);
 
 // Copy payment link to clipboard
 static copyPaymentLink(id){
-const inv=this.inv.find(x=>x.id===id);
+const inv=this.inv.find(x=>String(x.id)===String(id));
 if(!inv)return;
 const link=this.getPaymentLink(inv);
 if(!link)return;
@@ -2303,10 +2303,10 @@ h+=`<div class="row" style="grid-template-columns:1fr 2fr 1fr 1fr 1fr 1fr">
 <div style="font-weight:600">${sym}${this.fmt(q.total||0)}</div>
 <div style="display:flex;gap:.4rem;flex-wrap:wrap">
 <span style="background:${statusColor[q.status]||'var(--txt2)'};color:#fff;padding:.2rem .5rem;border-radius:4px;font-size:.75rem;font-weight:600">${(q.status||'draft').toUpperCase()}</span>
-${q.status!=='converted'?`<button class="btn btn-sec" style="font-size:.75rem;padding:.25rem .5rem" onclick="BOS.viewQuote(${q.id})">View</button>`:''}
-${q.status==='draft'||q.status==='sent'?`<button class="btn" style="font-size:.75rem;padding:.25rem .5rem" onclick="BOS.acceptQuote(${q.id})">✓ Accept</button>`:''}
-${q.status==='accepted'?`<button class="btn" style="font-size:.75rem;padding:.25rem .5rem;background:var(--succ)" onclick="BOS.convertQuoteToInvoice(${q.id})">→ Invoice</button>`:''}
-${q.status!=='converted'?`<button class="btn btn-dang" style="font-size:.75rem;padding:.25rem .5rem" onclick="BOS.delQuote(${q.id})">Del</button>`:''}
+${q.status!=='converted'?`<button class="btn btn-sec" style="font-size:.75rem;padding:.25rem .5rem" onclick="BOS.viewQuote('${q.id}')">View</button>`:''}
+${q.status==='draft'||q.status==='sent'?`<button class="btn" style="font-size:.75rem;padding:.25rem .5rem" onclick="BOS.acceptQuote('${q.id}')">✓ Accept</button>`:''}
+${q.status==='accepted'?`<button class="btn" style="font-size:.75rem;padding:.25rem .5rem;background:var(--succ)" onclick="BOS.convertQuoteToInvoice('${q.id}')">→ Invoice</button>`:''}
+${q.status!=='converted'?`<button class="btn btn-dang" style="font-size:.75rem;padding:.25rem .5rem" onclick="BOS.delQuote('${q.id}')">Del</button>`:''}
 </div></div>`;
 });
 h+='</div>';
@@ -2348,8 +2348,9 @@ document.getElementById('quo-valid').valueAsDate=valid;
 
 static saveQuote(){
 if(!this._require([{id:'quo-cust',label:'Customer',msg:'Select a customer for this quote'}]))return;
-const cid=parseInt(document.getElementById('quo-cust').value);
-const c=this.people.find(x=>x.id===cid);
+const cid=document.getElementById('quo-cust').value;
+const c=this.people.find(x=>String(x.id)===String(cid));
+if(!c){this.log('warning','Customer not found');return;}
 const dt=document.getElementById('quo-date').value;
 const validUntil=document.getElementById('quo-valid').value;
 const notes=document.getElementById('quo-notes').value;
@@ -2358,7 +2359,7 @@ document.querySelectorAll('#items .form-group').forEach(r=>{
 const ps=r.querySelector('.item-prod');
 const ds=r.querySelector('.item-desc');
 let desc='',pid=null;
-if(ps){pid=parseInt(ps.value)||null;if(pid)desc=this.prod.find(x=>x.id===pid).name;}
+if(ps){pid=parseInt(ps.value)||null;if(pid)desc=this.prod.find(x=>String(x.id)===String(pid)).name;}
 else desc=ds.value;
 items.push({pid,desc,qty:parseFloat(r.querySelector('.item-qty').value),price:parseFloat(r.querySelector('.item-price').value),amt:parseFloat(r.querySelector('.item-amt').value)});
 });
@@ -2373,16 +2374,16 @@ this.rQuotes();
 }
 
 static viewQuote(id){
-const q=this.quotes.find(x=>x.id===id);
+const q=this.quotes.find(x=>String(x.id)===String(id));
 if(!q)return;
 const sym=q.sym||this.cfg.sym||'$';
 let h=`<div style="background:var(--card);padding:2rem;border-radius:var(--rad);box-shadow:var(--sh)">`;
 h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;flex-wrap:wrap;gap:1rem">`;
 h+=`<div><h3>📋 ${q.num}</h3><div style="color:var(--txt2);font-size:.875rem;margin-top:.25rem">For: ${q.custName} · ${q.date}${q.validUntil?' · Valid until: '+q.validUntil:''}</div></div>`;
 h+=`<div style="display:flex;gap:.5rem;flex-wrap:wrap">`;
-if(q.status==='draft'||q.status==='sent')h+=`<button class="btn" onclick="BOS.acceptQuote(${q.id})">✓ Accept Quote</button>`;
-if(q.status==='accepted')h+=`<button class="btn" style="background:var(--succ)" onclick="BOS.convertQuoteToInvoice(${q.id})">→ Convert to Invoice</button>`;
-if(q.status!=='converted')h+=`<button class="btn btn-sec" onclick="BOS.declineQuote(${q.id})">✗ Decline</button>`;
+if(q.status==='draft'||q.status==='sent')h+=`<button class="btn" onclick="BOS.acceptQuote('${q.id}')">✓ Accept Quote</button>`;
+if(q.status==='accepted')h+=`<button class="btn" style="background:var(--succ)" onclick="BOS.convertQuoteToInvoice('${q.id}')">→ Convert to Invoice</button>`;
+if(q.status!=='converted')h+=`<button class="btn btn-sec" onclick="BOS.declineQuote('${q.id}')">✗ Decline</button>`;
 h+=`<button class="btn btn-sec" onclick="BOS.rQuotes()">← Back</button></div></div>`;
 h+=`<div class="tbl"><div class="row hdr" style="grid-template-columns:3fr 1fr 1fr 1fr"><div>Item</div><div>Qty</div><div>Price</div><div>Amount</div></div>`;
 (q.items||[]).forEach(it=>h+=`<div class="row" style="grid-template-columns:3fr 1fr 1fr 1fr"><div>${it.desc}</div><div>${it.qty}</div><div>${sym}${this.fmt(it.price)}</div><div>${sym}${this.fmt(it.amt)}</div></div>`);
@@ -2399,7 +2400,7 @@ document.querySelector('.exp-body').scrollTop=0;
 }
 
 static acceptQuote(id){
-const q=this.quotes.find(x=>x.id===id);
+const q=this.quotes.find(x=>String(x.id)===String(id));
 if(!q)return;
 q.status='accepted';
 this.save();
@@ -2408,7 +2409,7 @@ this.rQuotes();
 }
 
 static declineQuote(id){
-const q=this.quotes.find(x=>x.id===id);
+const q=this.quotes.find(x=>String(x.id)===String(id));
 if(!q)return;
 if(!confirm('Mark quote '+q.num+' as declined?'))return;
 q.status='declined';
@@ -2418,26 +2419,28 @@ this.rQuotes();
 }
 
 static convertQuoteToInvoice(id){
-const q=this.quotes.find(x=>x.id===id);
+const q=this.quotes.find(x=>String(x.id)===String(id));
 if(!q)return;
-if(!confirm('Convert '+q.num+' to invoice? This will create a new draft invoice.'))return;
-const inv={id:Date.now(),num:'INV-'+this.nxt.i++,cid:q.cid,custName:q.custName,
-date:new Date().toISOString().split('T')[0],items:q.items,sub:q.sub,tax:q.tax,
-taxRate:q.taxRate,total:q.total,cur:q.cur,sym:q.sym,status:'draft',fromQuote:q.num};
-this.inv.push(inv);
-q.status='converted';
-q.convertedTo=inv.num;
-this.save();
-this.log('success','Quote '+q.num+' converted to '+inv.num);
-this.rSales();
+this.confirm('Convert '+q.num+' to a draft invoice?',()=>{
+  const inv={id:Date.now(),num:'INV-'+this.nxt.i++,cid:q.cid,custName:q.custName,
+  date:new Date().toISOString().split('T')[0],items:q.items,sub:q.sub,tax:q.tax,
+  taxRate:q.taxRate,total:q.total,cur:q.cur,sym:q.sym,status:'draft',fromQuote:q.num};
+  this.inv.push(inv);
+  q.status='converted';
+  q.convertedTo=inv.num;
+  this.save();
+  this.log('success','Quote '+q.num+' converted to '+inv.num);
+  this.rSales();
+},'→ Convert to Invoice');
 }
 
 static delQuote(id){
-if(!confirm('Delete this quote?'))return;
-this.quotes=this.quotes.filter(x=>x.id!==id);
-this.save();
-this.log('info','Quote deleted');
-this.rQuotes();
+this.confirm('Delete this quote?',()=>{
+  this.quotes=this.quotes.filter(x=>String(x.id)!==String(id));
+  this.save();
+  this.log('info','Quote deleted');
+  this.rQuotes();
+},'Delete Quote');
 }
 
 // ── 🔁 RECURRING INVOICES ─────────────────────────────────────────────────
@@ -2464,8 +2467,9 @@ h+=`<div class="row" style="grid-template-columns:2fr 2fr 1fr 1fr 1fr 1fr">
 <div style="color:${overdue?'var(--dang)':'var(--txt)'};font-weight:${overdue?'700':'400'}">${r.nextDue||'—'}${overdue?' ⚠':''}
 </div>
 <div style="display:flex;gap:.4rem">
-<button class="btn btn-sec" style="font-size:.75rem;padding:.25rem .5rem" onclick="BOS.generateNow(${r.id})">▶ Now</button>
-<button class="btn btn-dang" style="font-size:.75rem;padding:.25rem .5rem" onclick="BOS.delRecurring(${r.id})">Del</button>
+<button class="btn btn-sec" style="font-size:.75rem;padding:.25rem .5rem" onclick="BOS.generateNow('${r.id}')">▶ Now</button>
+<button class="btn btn-sec" style="font-size:.75rem;padding:.25rem .5rem" onclick="BOS.editRecurring('${r.id}')">✏️</button>
+<button class="btn btn-dang" style="font-size:.75rem;padding:.25rem .5rem" onclick="BOS.delRecurring('${r.id}')">✕</button>
 </div></div>`;
 });
 h+='</div>';
@@ -2505,8 +2509,9 @@ document.getElementById('rec-start').valueAsDate=new Date();
 }
 
 static saveRecurring(){
-const cid=parseInt(document.getElementById('rec-cust').value);
-const c=this.people.find(x=>x.id===cid);
+const cid=document.getElementById('rec-cust').value;
+const c=this.people.find(x=>String(x.id)===String(cid));
+if(!c){this.log('warning','Customer not found');return;}
 const name=document.getElementById('rec-name').value;
 const freq=document.getElementById('rec-freq').value;
 const start=document.getElementById('rec-start').value;
@@ -2515,7 +2520,7 @@ const items=[];
 document.querySelectorAll('#items .form-group').forEach(r=>{
 const ps=r.querySelector('.item-prod');const ds=r.querySelector('.item-desc');
 let desc='',pid=null;
-if(ps){pid=parseInt(ps.value)||null;if(pid)desc=this.prod.find(x=>x.id===pid).name;}
+if(ps){pid=parseInt(ps.value)||null;if(pid)desc=this.prod.find(x=>String(x.id)===String(pid)).name;}
 else desc=ds.value;
 items.push({pid,desc,qty:parseFloat(r.querySelector('.item-qty').value),price:parseFloat(r.querySelector('.item-price').value),amt:parseFloat(r.querySelector('.item-amt').value)});
 });
@@ -2556,7 +2561,7 @@ return generated;
 }
 
 static generateNow(id){
-const r=this.recurring.find(x=>x.id===id);
+const r=this.recurring.find(x=>String(x.id)===String(id));
 if(!r)return;
 if(!confirm('Generate invoice now for: '+r.name+'?'))return;
 const today=new Date().toISOString().split('T')[0];
@@ -2570,12 +2575,37 @@ this.log('success','Invoice '+inv.num+' generated from recurring schedule: '+r.n
 this.rSales();
 }
 
+static editRecurring(id){
+  const r=this.recurring.find(x=>String(x.id)===String(id));
+  if(!r)return;
+  this.confirm(`<div style="max-width:440px">
+<h4 style="margin-bottom:1rem">✏️ Edit Recurring Schedule</h4>
+<div style="display:grid;gap:.75rem">
+<div class="form-group"><label class="form-label" for="er-name">Schedule Name</label>
+<input class="form-input" id="er-name" value="${this._escHtml(r.name||'')}"></div>
+<div class="form-group"><label class="form-label" for="er-freq">Frequency</label>
+<select class="form-select" id="er-freq">
+${['weekly','bi-weekly','monthly','quarterly','annually'].map(f=>`<option value="${f}" ${r.freq===f?'selected':''}>${f}</option>`).join('')}
+</select></div>
+<div class="form-group"><label class="form-label" for="er-next">Next Due Date</label>
+<input class="form-input" type="date" id="er-next" value="${r.nextDue||''}"></div>
+<div class="form-group"><label class="form-label" for="er-end">End Date (optional)</label>
+<input class="form-input" type="date" id="er-end" value="${r.end||''}"></div>
+</div></div>`,()=>{
+    r.name=document.getElementById('er-name').value;
+    r.freq=document.getElementById('er-freq').value;
+    r.nextDue=document.getElementById('er-next').value;
+    r.end=document.getElementById('er-end').value||null;
+    this.save();this.log('info','Recurring updated: '+r.name);this.rRecurring();
+  },'💾 Save');
+}
 static delRecurring(id){
-if(!confirm('Delete this recurring schedule? Existing invoices are kept.'))return;
-this.recurring=this.recurring.filter(x=>x.id!==id);
-this.save();
-this.log('info','Recurring schedule deleted');
-this.rRecurring();
+this.confirm('Delete this recurring schedule? Existing invoices are kept.',()=>{
+  this.recurring=this.recurring.filter(x=>String(x.id)!==String(id));
+  this.save();
+  this.log('info','Recurring schedule deleted');
+  this.rRecurring();
+},'Delete Schedule');
 }
 
 // ── 🔴 CREDIT NOTES ───────────────────────────────────────────────────────
@@ -2590,15 +2620,20 @@ if(!this.credits.length){
 h+='<div class="empty"><div style="font-size:3rem;margin-bottom:1rem">🔴</div><p style="margin-bottom:1rem">No credit notes yet</p><p style="color:var(--txt2);margin-bottom:1.5rem">Issue when a customer returns goods, a service was not delivered, or a billing error needs correcting</p><button class="btn" onclick="BOS.newCredit()">Issue First Credit Note</button></div>';
 }else{
 const sorted=[...this.credits].sort((a,b)=>sortOrder==='desc'?new Date(b.date)-new Date(a.date):new Date(a.date)-new Date(b.date));
-h+='<div class="tbl"><div class="row hdr" style="grid-template-columns:1fr 2fr 1fr 2fr 1fr 1fr"><div>CN #</div><div>Customer</div><div>Date</div><div>Ref Invoice</div><div>Amount</div><div>Status</div></div>';
+h+='<div class="tbl"><div class="row hdr" style="grid-template-columns:1fr 2fr 1fr 2fr 1fr 1.8fr"><div>CN #</div><div>Customer</div><div>Date</div><div>Ref Invoice</div><div>Amount</div><div>Status</div></div>';
 sorted.forEach(cn=>{
-h+=`<div class="row" style="grid-template-columns:1fr 2fr 1fr 2fr 1fr 1fr">
+h+=`<div class="row" style="grid-template-columns:1fr 2fr 1fr 2fr 1fr 1.8fr">
 <div style="font-weight:600;color:var(--dang)">${cn.num}</div>
 <div>${cn.custName}</div>
 <div>${cn.date}</div>
 <div style="color:var(--txt2)">${cn.refInv||'—'}</div>
 <div style="color:var(--dang);font-weight:600">-${sym}${this.fmt(cn.total||0)}</div>
-<div><span style="background:var(--succ);color:#fff;padding:.2rem .5rem;border-radius:4px;font-size:.75rem">${cn.posted?'POSTED':'DRAFT'}</span></div>
+<div style="display:flex;gap:.3rem;align-items:center;flex-wrap:wrap">
+<span style="background:${cn.posted?'var(--succ)':'var(--warn)'};color:${cn.posted?'#fff':'#000'};padding:.2rem .5rem;border-radius:4px;font-size:.75rem">${cn.posted?'POSTED':'DRAFT'}</span>
+${!cn.posted?`<button class="btn btn-sec" style="font-size:.72rem;padding:.15rem .45rem" onclick="BOS.postCredit('${cn.id}')">✓ Post</button>`:''}
+<button class="btn btn-sec" style="font-size:.72rem;padding:.15rem .45rem" onclick="BOS.viewCredit('${cn.id}')">View</button>
+<button class="btn btn-dang" style="font-size:.72rem;padding:.15rem .45rem" onclick="BOS.delCredit('${cn.id}')">✕</button>
+</div>
 </div>`;
 });
 h+='</div>';
@@ -2607,6 +2642,65 @@ document.getElementById('exp-body').innerHTML=h;
 document.querySelector('.exp-body').scrollTop=0;
 }
 
+static postCredit(id){
+  const cn=this.credits.find(x=>String(x.id)===String(id));
+  if(!cn||cn.posted)return;
+  if(this.accountingMode){
+    const arAcct=this.accounts.find(a=>String(a.code)==='1100'||a.name==='Accounts Receivable');
+    const revAcct=this.accounts.find(a=>String(a.code)==='4000'||a.name==='Revenue'||a.name==='Sales Revenue');
+    if(arAcct&&revAcct){
+      const _cjId=this.nxt.je++;
+      const je={id:_cjId,date:cn.date,ref:'CN-'+cn.num,
+        description:'Credit Note: '+(cn.reason||'Credit issued'),
+        lines:[
+          {account:String(arAcct.code),description:'Credit to AR — '+cn.custName,debit:0,credit:cn.total},
+          {account:String(revAcct.code),description:'Revenue reversal',debit:cn.total,credit:0}
+        ]};
+      this.journalEntries.push(je);this.rebuildLedger();
+    }
+  }
+  cn.posted=true;
+  this.save();this.log('success','Credit note '+cn.num+' posted');this.rCredits();
+}
+static viewCredit(id){
+  const cn=this.credits.find(x=>String(x.id)===String(id));
+  if(!cn)return;
+  const sym=this.cfg.sym||'$';
+  let h=`<div style="background:var(--card);padding:2rem;border-radius:var(--rad);max-width:560px">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+<h3 style="color:var(--dang)">${cn.num}</h3>
+<span style="background:${cn.posted?'var(--succ)':'var(--warn)'};color:${cn.posted?'#fff':'#000'};padding:.3rem .75rem;border-radius:4px">${cn.posted?'POSTED':'DRAFT'}</span>
+</div>
+<p style="color:var(--txt2);margin-bottom:.25rem">Customer: <strong>${cn.custName}</strong></p>
+<p style="color:var(--txt2);margin-bottom:.25rem">Date: ${cn.date}</p>
+${cn.refInv?`<p style="color:var(--txt2);margin-bottom:.25rem">Ref Invoice: ${cn.refInv}</p>`:''}
+<p style="color:var(--txt2);margin-bottom:1.5rem">Reason: ${cn.reason||'—'}</p>
+<div style="background:var(--bg);border-radius:8px;overflow:hidden;margin-bottom:1rem">
+<div style="display:grid;grid-template-columns:3fr 1fr 1fr 1fr;gap:1rem;padding:.75rem 1rem;font-weight:600;background:var(--p);color:#fff"><div>Item</div><div>Qty</div><div>Price</div><div>Amount</div></div>`;
+  (cn.items||[]).forEach(l=>{
+    h+=`<div style="display:grid;grid-template-columns:3fr 1fr 1fr 1fr;gap:1rem;padding:.75rem 1rem;border-bottom:1px solid var(--bord)"><div>${l.desc||'—'}</div><div>${l.qty||0}</div><div>${sym}${this.fmt(l.price||0)}</div><div>${sym}${this.fmt(l.amt||0)}</div></div>`;
+  });
+  h+=`</div>
+<div style="text-align:right;font-size:1.1rem;font-weight:700;color:var(--dang)">Total: -${sym}${this.fmt(cn.total||0)}</div>
+<div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1.5rem">
+${!cn.posted?`<button class="btn" style="background:var(--succ);color:#fff" onclick="BOS.postCredit('${cn.id}');BOS.closeJEView()">✓ Post</button>`:''}
+<button class="btn btn-sec" onclick="BOS.closeJEView()">Close</button>
+</div></div>`;
+  const ov=document.createElement('div');
+  ov.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;overflow:auto';
+  ov.id='je-overlay';ov.innerHTML=h;
+  ov.onclick=(e)=>{if(e.target===ov)this.closeJEView();};
+  document.body.appendChild(ov);
+}
+static delCredit(id){
+  const cn=this.credits.find(x=>String(x.id)===String(id));
+  if(!cn)return;
+  if(cn.posted){this.alert('Posted credit notes cannot be deleted — they are part of the accounting record.');return;}
+  this.confirm('Delete credit note '+cn.num+'?',()=>{
+    this.credits=this.credits.filter(x=>String(x.id)!==String(id));
+    this.save();this.log('warning','Credit note '+cn.num+' deleted');this.rCredits();
+  },'Delete');
+}
 static newCredit(){
 const cust=this.people.filter(x=>x.type==='customer');
 if(!cust.length){this.log('warning','No customers yet');this.open('people');return;}
@@ -2649,8 +2743,9 @@ if(custSel)custSel.value=inv.cid;
 
 static saveCredit(){
 if(!this._require([{id:'cn-cust',label:'Customer',msg:'Select a customer for this credit note'}]))return;
-const cid=parseInt(document.getElementById('cn-cust').value);
-const c=this.people.find(x=>x.id===cid);
+const cid=document.getElementById('cn-cust').value;
+const c=this.people.find(x=>String(x.id)===String(cid));
+if(!c){this.log('warning','Customer not found');return;}
 const dt=document.getElementById('cn-date').value;
 const reason=document.getElementById('cn-reason').value;
 const refInvId=document.getElementById('cn-refinv').value;
@@ -2659,7 +2754,7 @@ const items=[];
 document.querySelectorAll('#items .form-group').forEach(r=>{
 const ps=r.querySelector('.item-prod');const ds=r.querySelector('.item-desc');
 let desc='',pid=null;
-if(ps){pid=parseInt(ps.value)||null;if(pid)desc=this.prod.find(x=>x.id===pid).name;}
+if(ps){pid=parseInt(ps.value)||null;if(pid)desc=this.prod.find(x=>String(x.id)===String(pid)).name;}
 else desc=ds.value;
 items.push({pid,desc,qty:parseFloat(r.querySelector('.item-qty').value),price:parseFloat(r.querySelector('.item-price').value),amt:parseFloat(r.querySelector('.item-amt').value)});
 });
@@ -2715,7 +2810,7 @@ h+='<span id="cust-filter-hint" style="color:var(--txt2);font-size:.85rem"></spa
 if(!cust.length)h+='<div class="empty"><div style="font-size:3rem;margin-bottom:1rem">👥</div><p>No customers yet</p></div>';
 else{
 h+='<div class="tbl"><div class="row hdr" style="grid-template-columns:2fr 2fr 1fr 1fr"><div>Name</div><div>Email</div><div>Phone</div><div>Actions</div></div>';
-cust.forEach(p=>h+=`<div class="row person-row" style="grid-template-columns:2fr 2fr 1fr 1fr" data-name="${(p.name||'').toLowerCase()}" data-email="${(p.email||'').toLowerCase()}" data-phone="${(p.phone||'').toLowerCase()}"><div>${p.name}</div><div>${p.email||'-'}</div><div>${p.phone||'-'}</div><div style="display:flex;gap:.4rem;flex-wrap:wrap"><button class="btn btn-sec" onclick="BOS.rCustomerHistory(${p.id})">📊 History</button><button class="btn" onclick="BOS.editPerson(${p.id},'customer')">Edit</button><button class="btn btn-dang" onclick="BOS.delPerson(${p.id},'customer')">Delete</button></div></div>`);
+cust.forEach(p=>h+=`<div class="row person-row" style="grid-template-columns:2fr 2fr 1fr 1fr" data-name="${(p.name||'').toLowerCase()}" data-email="${(p.email||'').toLowerCase()}" data-phone="${(p.phone||'').toLowerCase()}"><div>${p.name}</div><div>${p.email||'-'}</div><div>${p.phone||'-'}</div><div style="display:flex;gap:.4rem;flex-wrap:wrap"><button class="btn btn-sec" onclick="BOS.rCustomerHistory('${p.id}')">📊 History</button><button class="btn" onclick="BOS.editPerson('${p.id}','customer')">Edit</button><button class="btn btn-dang" onclick="BOS.delPerson('${p.id}','customer')">Delete</button></div></div>`);
 h+='</div>';
 }
 document.getElementById('exp-body').innerHTML=h;
@@ -2762,7 +2857,7 @@ h+='<span id="vend-filter-hint" style="color:var(--txt2);font-size:.85rem"></spa
 if(!vend.length)h+='<div class="empty"><div style="font-size:3rem;margin-bottom:1rem">🏭</div><p>No vendors yet</p></div>';
 else{
 h+='<div class="tbl"><div class="row hdr" style="grid-template-columns:2fr 1.5fr 1.5fr 1fr 1fr"><div>Company</div><div>Contact</div><div>Email</div><div>Phone</div><div>Actions</div></div>';
-vend.forEach(v=>h+=`<div class="row person-row" style="grid-template-columns:2fr 1.5fr 1.5fr 1fr 1fr" data-name="${(v.name||'').toLowerCase()}" data-email="${(v.email||'').toLowerCase()}" data-phone="${(v.phone||'').toLowerCase()}" data-contact="${(v.contact||'').toLowerCase()}"><div>${v.name}</div><div>${v.contact||'-'}</div><div>${v.email||'-'}</div><div>${v.phone||'-'}</div><div style="display:flex;gap:.5rem"><button class="btn btn-sec" onclick="BOS.editPerson(${v.id},'vendor')">Edit</button><button class="btn btn-dang" onclick="BOS.delPerson(${v.id},'vendor')">Delete</button></div></div>`);
+vend.forEach(v=>h+=`<div class="row person-row" style="grid-template-columns:2fr 1.5fr 1.5fr 1fr 1fr" data-name="${(v.name||'').toLowerCase()}" data-email="${(v.email||'').toLowerCase()}" data-phone="${(v.phone||'').toLowerCase()}" data-contact="${(v.contact||'').toLowerCase()}"><div>${v.name}</div><div>${v.contact||'-'}</div><div>${v.email||'-'}</div><div>${v.phone||'-'}</div><div style="display:flex;gap:.5rem"><button class="btn btn-sec" onclick="BOS.editPerson('${v.id}','vendor')">Edit</button><button class="btn btn-dang" onclick="BOS.delPerson('${v.id}','vendor')">Delete</button></div></div>`);
 h+='</div>';
 }
 document.getElementById('exp-body').innerHTML=h;
@@ -2773,9 +2868,11 @@ static savePerson(type){
 if(!this._require([{id:'p-name',label:'Name',msg:(type==='customer'?'Customer':'Vendor')+' name is required'}]))return;
 const editingId=this.editingPerson;
 const contactEl=document.getElementById('p-contact');
+let _savedPersonName = '';
 if(editingId){
 // Update existing person
-const p=this.people.find(x=>x.id===editingId);
+const p=this.people.find(x=>String(x.id)===String(editingId));
+if(!p){this.log("warning","Person not found for edit");return;}
 const oldName=p.name;
 p.name=document.getElementById('p-name').value;
 p.email=document.getElementById('p-email').value;
@@ -2784,6 +2881,7 @@ p.address=document.getElementById('p-addr').value;
 if(contactEl)p.contact=contactEl.value;
 const _notesEl=document.getElementById('p-notes');
 if(_notesEl)p.notes=_notesEl.value;
+_savedPersonName=p.name;
 this.log('info',(type==='customer'?'Customer':'Vendor')+' updated: '+oldName+' → '+p.name);
 this.editingPerson=null;
 }else{
@@ -2795,16 +2893,17 @@ email:document.getElementById('p-email').value,phone:document.getElementById('p-
 address:document.getElementById('p-addr').value,
 notes:notesEl?notesEl.value:''};
 this.people.push(p);
+_savedPersonName=p.name;
 this.log('success',(type==='customer'?'Customer':'Vendor')+' added: '+p.name);
 }
 this._dirtyReset();
-this.save();this.saveFormation('Person saved: '+(p.name||''));
+this.save();this.saveFormation('Person saved: '+_savedPersonName);
 if(type==='customer')this.rPeople();else this.rVendors();
 this.updCards();
 }
 
 static editPerson(id,type){
-const p=this.people.find(x=>x.id===id);
+const p=this.people.find(x=>String(x.id)===String(id));
 if(!p)return;
 this.editingPerson=id;
 // Pre-fill form
@@ -2840,7 +2939,7 @@ document.getElementById('pr-taxexempt').checked=false;
 }
 
 static delPerson(id,type){
-const p=this.people.find(x=>x.id===id);
+const p=this.people.find(x=>String(x.id)===String(id));
 // Check for dependencies
 if(type==='customer'){
 const invoices=this.inv.filter(x=>x.cid===id);
@@ -2858,7 +2957,7 @@ return;
 }
 }
 this.confirm('Delete '+(type==='customer'?'customer':'vendor')+' '+p.name+'?',()=>{
-this.people=this.people.filter(x=>x.id!==id);
+this.people=this.people.filter(x=>String(x.id)!==String(id));
 this.save();this.saveFormation('Person deleted: '+(p.name||''));
 this.log('warning','Deleted: '+p.name);
 if(type==='customer')this.rPeople();else this.rVendors();
@@ -2901,7 +3000,7 @@ h+='<div class="tbl"><div class="row hdr" style="grid-template-columns:2fr 1fr 1
 allProds.forEach(p=>{
 const margin=p.price>0?((p.price-p.cost)/p.price*100).toFixed(1)+'%':'0%';
 const low=p.qty<=(p.reorder||0);
-h+=`<div class="row prod-row" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr 1fr" data-name="${(p.name||'').toLowerCase()}" data-sku="${(p.sku||'').toLowerCase()}" data-stock="${p.qty<=0?'zero':low?'low':'ok'}"><div>${p.name}</div><div>${p.sku||'-'}</div><div style="color:${low?'var(--dang)':'var(--txt)'}">${p.qty||0}</div><div>${this.cfg.sym}${this.fmt(p.cost)}</div><div>${this.cfg.sym}${this.fmt(p.price)}</div><div>${margin}</div><div style="display:flex;gap:.4rem;flex-wrap:wrap"><button class="btn btn-sec" onclick="BOS.rProductHistory(${p.id})">📊 History</button><button class="btn btn-sec" onclick="BOS.editProd(${p.id})">Edit</button><button class="btn btn-dang" onclick="BOS.delProd(${p.id})">Del</button></div></div>`;
+h+=`<div class="row prod-row" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr 1fr" data-name="${(p.name||'').toLowerCase()}" data-sku="${(p.sku||'').toLowerCase()}" data-stock="${p.qty<=0?'zero':low?'low':'ok'}"><div>${p.name}</div><div>${p.sku||'-'}</div><div style="color:${low?'var(--dang)':'var(--txt)'}">${p.qty||0}</div><div>${this.cfg.sym}${this.fmt(p.cost)}</div><div>${this.cfg.sym}${this.fmt(p.price)}</div><div>${margin}</div><div style="display:flex;gap:.4rem;flex-wrap:wrap"><button class="btn btn-sec" onclick="BOS.rProductHistory('${p.id}')">📊 History</button><button class="btn btn-sec" onclick="BOS.editProd('${p.id}')">Edit</button><button class="btn btn-dang" onclick="BOS.delProd('${p.id}')">Del</button></div></div>`;
 });
 h+='</div>';
 }
@@ -2939,7 +3038,8 @@ if(!this._require([
 const editingId=this.editingProduct;
 if(editingId){
 // Update existing product
-const p=this.prod.find(x=>x.id===editingId);
+const p=this.prod.find(x=>String(x.id)===String(editingId));
+if(!p){this.log("warning","Product not found for edit");return;}
 const oldName=p.name;
 p.name=document.getElementById('pr-name').value;
 p.sku=document.getElementById('pr-sku').value;
@@ -3001,7 +3101,7 @@ this.updCards();
 }
 
 static editProd(id){
-const p=this.prod.find(x=>x.id===id);
+const p=this.prod.find(x=>String(x.id)===String(id));
 if(!p)return;
 this.editingProduct=id;
 // Pre-fill form
@@ -3018,7 +3118,7 @@ this.log('info','Editing product: '+p.name);
 }
 
 static delProd(id){
-const p=this.prod.find(x=>x.id===id);
+const p=this.prod.find(x=>String(x.id)===String(id));
 // Check if product is used in any invoice
 const usedInInvoices=this.inv.some(inv=>inv.items&&inv.items.some(item=>item.pid===id));
 if(usedInInvoices){
@@ -3027,7 +3127,7 @@ this.alert('Cannot delete '+p.name+'. This product is referenced in one or more 
 return;
 }
 this.confirm('Delete product '+p.name+'?',()=>{
-this.prod=this.prod.filter(x=>x.id!==id);
+this.prod=this.prod.filter(x=>String(x.id)!==String(id));
 this.save();
 this.log('warning','Deleted product: '+p.name);
 this.rInv();
@@ -3069,11 +3169,11 @@ const sym=i.sym||this.cfg.sym||'$';
 const secDisplay=i.secondaryCur&&i.secondaryTotal?`<div style="font-size:.75rem;color:var(--txt2)">${i.secondarySym||''}${this.fmt(i.secondaryTotal)} ${i.secondaryCur}</div>`:'';
 const canPay=this.cfg.stripePaymentLink&&(i.status==='sent'||i.status==='overdue');
 const payLink=canPay?this.getPaymentLink(i):null;
-const payBtn=payLink?`<a href="${payLink}" target="_blank" rel="noopener" class="btn" style="background:var(--succ);color:#fff;text-decoration:none">💳 ${this.u('payNow')}</a><button class="btn btn-sec" onclick="BOS.copyPaymentLink(${i.id})" title="Copy payment link">🔗</button>`:'';
+const payBtn=payLink?`<a href="${payLink}" target="_blank" rel="noopener" class="btn" style="background:var(--succ);color:#fff;text-decoration:none">💳 ${this.u('payNow')}</a><button class="btn btn-sec" onclick="BOS.copyPaymentLink('${i.id}')" title="Copy payment link">🔗</button>`:'';
 const canDeliver=(i.status==='paid'||i.status==='sent');
 const hasDelivery=this.deliveries.find(d=>d.invId===i.id);
-const deliverBtn=canDeliver?`<button class="btn btn-sec" onclick="BOS.createDelivery(${i.id})" title="${hasDelivery?'View delivery':'Create delivery order'}" style="${hasDelivery?'border-color:var(--succ);color:var(--succ)':''}">🚚${hasDelivery?' ✓':''}</button>`:'';
-h+=`<div class="row inv-row" style="grid-template-columns:1fr 2fr 1fr 1fr 1fr 1fr" data-num="${(i.num||'').toLowerCase()}" data-cust="${(i.custName||'').toLowerCase()}" data-status="${i.status}"><div>${i.num}</div><div>${i.custName}</div><div>${i.date}</div><div>${sym}${this.fmt(i.total)}${secDisplay}</div><div><span class="status ${i.status}">${i.status}</span></div><div style="display:flex;gap:.4rem;flex-wrap:wrap">${editBtn}${payBtn}${deliverBtn}<button class="btn btn-sec" onclick="BOS.chgStatus(${i.id})">Status</button><button class="btn btn-sec" onclick="BOS.previewInv(${i.id})" title="View invoice details">👁 View</button><button class="btn" onclick="BOS.pdf(${i.id},'inv')">PDF</button><button class="btn btn-sec" onclick="BOS.v2vSend(${i.id})" title="Send to another vessel">🤝</button>${delBtn}</div></div>`;
+const deliverBtn=canDeliver?`<button class="btn btn-sec" onclick="BOS.createDelivery('${i.id}')" title="${hasDelivery?'View delivery':'Create delivery order'}" style="${hasDelivery?'border-color:var(--succ);color:var(--succ)':''}">🚚${hasDelivery?' ✓':''}</button>`:'';
+h+=`<div class="row inv-row" style="grid-template-columns:1fr 2fr 1fr 1fr 1fr 1fr" data-num="${(i.num||'').toLowerCase()}" data-cust="${(i.custName||'').toLowerCase()}" data-status="${i.status}"><div>${i.num}</div><div>${i.custName}</div><div>${i.date}</div><div>${sym}${this.fmt(i.total)}${secDisplay}</div><div><span class="status ${i.status}">${i.status}</span></div><div style="display:flex;gap:.4rem;flex-wrap:wrap">${editBtn}${payBtn}${deliverBtn}<button class="btn btn-sec" onclick="BOS.chgStatus('${i.id}')">Status</button><button class="btn btn-sec" onclick="BOS.previewInv('${i.id}')" title="View invoice details">👁 View</button><button class="btn" onclick="BOS.pdf('${i.id}','inv')">PDF</button><button class="btn btn-sec" onclick="BOS.v2vSend('${i.id}')" title="Send to another vessel">🤝</button>${delBtn}</div></div>`;
 });
 h+='</div>';
 }
@@ -3121,9 +3221,9 @@ h+='<div class="tbl"><div class="row hdr" style="grid-template-columns:1fr 2fr 1
 sorted.forEach(p=>{
 const status=p.status||'draft';
 const isDraft=status==='draft';
-const editBtn=isDraft?`<button class="btn" onclick="BOS.editPO(${p.id})">✏️ Edit</button>`:'';
+const editBtn=isDraft?`<button class="btn" onclick="BOS.editPO('${p.id}')">✏️ Edit</button>`:'';
 const sym=p.sym||this.cfg.sym||'$';
-h+=`<div class="row po-row" style="grid-template-columns:1fr 2fr 1fr 1fr 1fr 1fr" data-num="${(p.num||'').toLowerCase()}" data-vend="${(p.vendName||'').toLowerCase()}" data-status="${status}"><div>${p.num}</div><div>${p.vendName}</div><div>${p.date}</div><div>${sym}${this.fmt(p.total)}</div><div><span class="status ${status}">${status}</span></div><div style="display:flex;gap:.5rem">${editBtn}<button class="btn btn-sec" onclick="BOS.chgPOStatus(${p.id})">Status</button><button class="btn" onclick="BOS.pdf(${p.id},'po')">PDF</button><button class="btn btn-sec" onclick="BOS.po2Inv(${p.id})">→Invoice</button><button class="btn btn-dang" onclick="BOS.delPO(${p.id})">Del</button></div></div>`;
+h+=`<div class="row po-row" style="grid-template-columns:1fr 2fr 1fr 1fr 1fr 1fr" data-num="${(p.num||'').toLowerCase()}" data-vend="${(p.vendName||'').toLowerCase()}" data-status="${status}"><div>${p.num}</div><div>${p.vendName}</div><div>${p.date}</div><div>${sym}${this.fmt(p.total)}</div><div><span class="status ${status}">${status}</span></div><div style="display:flex;gap:.5rem">${editBtn}<button class="btn btn-sec" onclick="BOS.chgPOStatus('${p.id}')">Status</button><button class="btn" onclick="BOS.pdf('${p.id}','po')">PDF</button><button class="btn btn-sec" onclick="BOS.po2Inv('${p.id}')">→Invoice</button><button class="btn btn-dang" onclick="BOS.delPO('${p.id}')">Del</button></div></div>`;
 });
 h+='</div>';
 }
@@ -3149,7 +3249,7 @@ this.rPO();
 }
 
 static chgStatus(id){
-const i=this.inv.find(x=>x.id===id);
+const i=this.inv.find(x=>String(x.id)===String(id));
 const oldStatus=i.status;
 const opts=['draft','sent','paid','overdue'];
 const cur=opts.indexOf(i.status);
@@ -3157,6 +3257,9 @@ const newStatus=opts[(cur+1)%opts.length];
 
 // STOCK VALIDATION: Check inventory before marking as paid
 if(oldStatus!=='paid'&&newStatus==='paid'){
+// PO-sourced invoices: stock was already applied when PO was paid — skip reduction
+const _isPOInvoice=!!(i.fromPO&&this.po.find(p=>p.num===i.fromPO&&p._stockApplied));
+if(!_isPOInvoice){
 // Check if we have sufficient stock for all items
 const stockIssues=[];
 i.items.forEach(item=>{
@@ -3197,6 +3300,7 @@ this.log('info','Reduced stock: '+prod.name+' by '+item.qty+' (now '+prod.qty+')
 }
 }
 });
+} // end !_isPOInvoice
 }
 
 // Change status
@@ -3251,14 +3355,14 @@ if(acctBody){
 static updateInv(){
 const inv=this.editingItem;
 const cid=parseInt(document.getElementById('inv-cust').value);
-const c=this.people.find(x=>x.id===cid);
+const c=this.people.find(x=>String(x.id)===String(cid));
 const dt=document.getElementById('inv-date').value;
 const items=[];
 document.querySelectorAll('#items .form-group').forEach(r=>{
 const ps=r.querySelector('.item-prod');
 const ds=r.querySelector('.item-desc');
 let desc='',pid=null;
-if(ps){pid=parseInt(ps.value)||null;if(pid)desc=this.prod.find(x=>x.id===pid).name;}
+if(ps){pid=parseInt(ps.value)||null;if(pid)desc=this.prod.find(x=>String(x.id)===String(pid)).name;}
 else desc=ds.value;
 items.push({pid,desc,qty:parseFloat(r.querySelector('.item-qty').value),
 price:parseFloat(r.querySelector('.item-price').value),amt:parseFloat(r.querySelector('.item-amt').value)});
@@ -3291,7 +3395,7 @@ this.editingItem=null;
 }
 
 static editPO(id){
-const po=this.po.find(x=>x.id===id);
+const po=this.po.find(x=>String(x.id)===String(id));
 if(!po||(po.status&&po.status!=='draft')){
 this.alert('Only draft purchase orders can be edited. Sent/Paid POs are locked for audit compliance.');
 return;
@@ -3374,15 +3478,16 @@ cont.appendChild(div);
 static updatePO(){
 const po=this.editingItem;
 if(!po)return;
-const vid=parseInt(document.getElementById('po-vend').value);
-const v=this.people.find(x=>x.id===vid);
+const _vidRaw=document.getElementById('po-vend').value;
+const vid=(!_vidRaw||isNaN(_vidRaw))?_vidRaw:parseInt(_vidRaw);
+const v=this.people.find(x=>String(x.id)===String(vid));
 const dt=document.getElementById('po-date').value;
 const items=[];
 document.querySelectorAll('#po-items .form-group').forEach(r=>{
 const ps=r.querySelector('.po-item-prod');
 const ds=r.querySelector('.po-item-desc');
 let desc='',pid=null;
-if(ps){pid=parseInt(ps.value)||null;if(pid)desc=this.prod.find(x=>x.id===pid)?.name||'';}
+if(ps){pid=parseInt(ps.value)||null;if(pid)desc=this.prod.find(x=>String(x.id)===String(pid))?.name||'';}
 else desc=ds?.value||'';
 const qty=parseFloat(r.querySelector('.po-item-qty')?.value)||0;
 const cost=parseFloat(r.querySelector('.po-item-cost')?.value)||0;
@@ -3465,13 +3570,13 @@ this._dirtyInit();
 static invItem(i){
 let h='<div class="form-group" style="display:grid;grid-template-columns:3fr 1fr 1fr 1fr auto;gap:.75rem;align-items:end">';
 if(this.prod.length){
-h+='<div><label class="form-label" id="lbl-prod-'+i+'">Product</label><select class="form-select item-prod" aria-labelledby="lbl-prod-'+i+'" onchange="BOS.loadPrice(this)"><option value="">Select or enter manually...</option>';
+h+='<div><label class="form-label" for="inv-prod-'+i+'" id="lbl-prod-'+i+'">Product</label><select class="form-select item-prod" id="inv-prod-'+i+'" aria-labelledby="lbl-prod-'+i+'" onchange="BOS.loadPrice(this)"><option value="">Select or enter manually...</option>';
 this.prod.forEach(p=>h+=`<option value="${p.id}" data-price="${p.price}">${p.name}</option>`);
 h+='</select></div>';
-}else h+='<div><label class="form-label" id="lbl-desc-'+i+'">Description</label><input class="form-input item-desc" aria-labelledby="lbl-desc-'+i+'" required></div>';
-h+='<div><label class="form-label" id="lbl-qty-'+i+'">Qty</label><input class="form-input item-qty" aria-labelledby="lbl-qty-'+i+'" type="number" value="1" min="1" required onchange="BOS.calc()"></div>';
-h+='<div><label class="form-label" id="lbl-price-'+i+'">Price</label><input class="form-input item-price" aria-labelledby="lbl-price-'+i+'" type="number" step="0.01" required onchange="BOS.calc()"></div>';
-h+='<div><label class="form-label" id="lbl-amt-'+i+'">Amount</label><input class="form-input item-amt" aria-labelledby="lbl-amt-'+i+'" readonly></div>';
+}else h+='<div><label class="form-label" for="inv-desc-'+i+'" id="lbl-desc-'+i+'">Description</label><input class="form-input item-desc" id="inv-desc-'+i+'" aria-labelledby="lbl-desc-'+i+'" required></div>';
+h+='<div><label class="form-label" for="inv-qty-'+i+'" id="lbl-qty-'+i+'">Qty</label><input class="form-input item-qty" id="inv-qty-'+i+'" aria-labelledby="lbl-qty-'+i+'" type="number" value="1" min="1" required onchange="BOS.calc()"></div>';
+h+='<div><label class="form-label" for="inv-price-'+i+'" id="lbl-price-'+i+'">Price</label><input class="form-input item-price" id="inv-price-'+i+'" aria-labelledby="lbl-price-'+i+'" type="number" step="0.01" required onchange="BOS.calc()"></div>';
+h+='<div><label class="form-label" for="inv-amt-'+i+'" id="lbl-amt-'+i+'">Amount</label><input class="form-input item-amt" id="inv-amt-'+i+'" aria-labelledby="lbl-amt-'+i+'" readonly></div>';
 h+=`<button class="btn btn-dang" type="button" style="${i===0?'opacity:.3;pointer-events:none':''}" onclick="this.parentElement.remove();BOS.calc()">✕</button></div>`;
 return h;
 }
@@ -3766,15 +3871,16 @@ totEl.textContent=(this.cfg.sym||'$')+this.fmt(tot);
 
 static saveInv(){
 if(!this._require([{id:'inv-cust',label:'Customer',msg:'Select a customer for this invoice'}]))return;
-const cid=parseInt(document.getElementById('inv-cust').value);
-const c=this.people.find(x=>x.id===cid);
+const cid=document.getElementById('inv-cust').value;
+const c=this.people.find(x=>String(x.id)===String(cid));
+if(!c){this.log('warning','Customer not found');return;}
 const dt=document.getElementById('inv-date').value;
 const items=[];
 document.querySelectorAll('#items .form-group').forEach(r=>{
 const ps=r.querySelector('.item-prod');
 const ds=r.querySelector('.item-desc');
 let desc='',pid=null;
-if(ps){pid=parseInt(ps.value)||null;if(pid)desc=this.prod.find(x=>x.id===pid).name;}
+if(ps){pid=parseInt(ps.value)||null;if(pid)desc=this.prod.find(x=>String(x.id)===String(pid)).name;}
 else desc=ds.value;
 items.push({pid,desc,qty:parseFloat(r.querySelector('.item-qty').value),
 price:parseFloat(r.querySelector('.item-price').value),amt:parseFloat(r.querySelector('.item-amt').value)});
@@ -3815,13 +3921,14 @@ this.log('success','Invoice '+inv.num+' created for '+c.name+(shipping?' + '+thi
 }
 this.editingItem=null;
 this._dirtyReset();
-this.save();this.saveFormation('Invoice saved: '+(inv.num||''));
+const _savedInvNum=this.editingItem?this.editingItem.num:(this.inv.length?this.inv[this.inv.length-1].num:'');
+this.save();this.saveFormation('Invoice saved: '+_savedInvNum);
 this.rSales();
 this.updCards();this.updMetrics();
 }
 
 static editInv(id){
-const inv=this.inv.find(x=>x.id===id);
+const inv=this.inv.find(x=>String(x.id)===String(id));
 if(!inv)return;
 if(inv.status==='paid'||inv.status==='sent'){
 this.alert('Cannot edit a '+inv.status+' invoice. Change status to draft first.');
@@ -3860,7 +3967,7 @@ this.calc();
 }
 
 static previewInv(id){
-const i=this.inv.find(x=>x.id===id);
+const i=this.inv.find(x=>String(x.id)===String(id));
 if(!i){this.alert('Invoice not found.');return;}
 const sym=i.sym||this.cfg.sym||'$';
 const statusColor={draft:'var(--txt2)',sent:'var(--info)',paid:'var(--succ)',overdue:'var(--dang)'}[i.status]||'var(--txt)';
@@ -3945,9 +4052,9 @@ h+=`
 if(i.notes)h+=`<div style="margin-top:1.5rem;padding:1rem;background:var(--bg);border-radius:8px;color:var(--txt2);font-size:.875rem"><strong>Notes:</strong> ${i.notes}</div>`;
 // Action bar
 h+=`<div style="display:flex;gap:1rem;margin-top:2rem;flex-wrap:wrap">
-  <button class="btn" onclick="BOS.pdf(${i.id},'inv')">📄 Download PDF</button>
-  <button class="btn btn-sec" onclick="BOS.v2vSend(${i.id})">🤝 Send V2V</button>
-  <button class="btn btn-sec" onclick="BOS.chgStatus(${i.id});BOS.previewInv(${i.id})">🔄 Cycle Status</button>
+  <button class="btn" onclick="BOS.pdf('${i.id}','inv')">📄 Download PDF</button>
+  <button class="btn btn-sec" onclick="BOS.v2vSend('${i.id}')">🤝 Send V2V</button>
+  <button class="btn btn-sec" onclick="BOS.chgStatus('${i.id}');BOS.previewInv(${i.id})">🔄 Cycle Status</button>
   <button class="btn" onclick="BOS.rSales()">← Back to Invoices</button>
 </div>
 </div>`;
@@ -3962,8 +4069,9 @@ if(!this._require([{id:'po-vend',label:'Vendor',msg:'Select a vendor for this pu
 // NOTE: Stock is NOT increased when PO is created (draft status)
 // Stock increases only when PO is marked as "paid" (see chgPOStatus)
 // This follows accrual principle: goods received = payment made
-const vid=parseInt(document.getElementById('po-vend').value);
-const v=this.people.find(x=>x.id===vid);
+const _vidRaw=document.getElementById('po-vend').value;
+const vid=(!_vidRaw||isNaN(_vidRaw))?_vidRaw:parseInt(_vidRaw);
+const v=this.people.find(x=>String(x.id)===String(vid));
 const dt=document.getElementById('po-date').value;
 const items=[];
 let hasInvalidAccount=false;
@@ -4026,29 +4134,49 @@ this.updMetrics();
 }
 
 static chgPOStatus(id){
-const p=this.po.find(x=>x.id===id);
+const p=this.po.find(x=>String(x.id)===String(id));
 const oldStatus=p.status||'draft';
 const opts=['draft','sent','paid'];
 const cur=opts.indexOf(oldStatus);
 p.status=opts[(cur+1)%opts.length];
 
-// When marking as paid, increase inventory quantities
+// When marking as paid → increase stock + journal
 if(oldStatus!=='paid'&&p.status==='paid'){
-// Increase inventory for all items in PO
-if(p.items){
-p.items.forEach(item=>{
-if(item.pid){
-const prod=this.prod.find(pr=>pr.id===item.pid);
-if(prod){
-prod.qty=(prod.qty||0)+item.qty;
-this._appendStockHistory(prod,'purchase',item.qty,p.num);
-this.log('info','Increased stock: '+prod.name+' by '+item.qty+' (now '+prod.qty+')');
+  p._stockApplied=true; // mark so reversal knows to undo
+  if(p.items){
+    p.items.forEach(item=>{
+      if(item.pid){
+        const prod=this.prod.find(pr=>String(pr.id)===String(item.pid));
+        if(prod){
+          prod.qty=(prod.qty||0)+item.qty;
+          this._appendStockHistory(prod,'purchase',item.qty,p.num);
+          this.log('info','Stock +'+item.qty+': '+prod.name);
+        }
+      }
+    });
+  }
+  this.autoJournalFromPO(p);
 }
-}
-});
-}
-// Auto-create journal entry
-this.autoJournalFromPO(p);
+// When paid → draft/sent (accidental mark) — reverse stock
+if(oldStatus==='paid'&&p.status!=='paid'){
+  if(p._stockApplied&&p.items){
+    p.items.forEach(item=>{
+      if(item.pid){
+        const prod=this.prod.find(pr=>String(pr.id)===String(item.pid));
+        if(prod){
+          prod.qty=Math.max(0,(prod.qty||0)-item.qty);
+          this._appendStockHistory(prod,'reversal',-item.qty,p.num+'-REV');
+          this.log('warn','Stock reversed -'+item.qty+': '+prod.name);
+        }
+      }
+    });
+    p._stockApplied=false;
+    // Reverse the journal entry
+    const jeRef='JE-'+p.num;
+    const revIdx=this.journalEntries.findIndex(je=>je.description&&je.description.includes(p.num)&&je.description.includes('payment'));
+    if(revIdx>=0)this.journalEntries.splice(revIdx,1);
+    this.rebuildLedger();
+  }
 }
 
 this.save();this.saveFormation('PO '+p.num+' → '+p.status);
@@ -4065,7 +4193,7 @@ if(acctBody){
 }
 
 static po2Inv(id){
-const po=this.po.find(x=>x.id===id);
+const po=this.po.find(x=>String(x.id)===String(id));
 this.log('info','Converting PO-'+po.num.split('-')[1]+' to invoice');
 // Create invoice from PO
 const inv={id:Date.now(),num:'INV-'+this.nxt.i++,cid:po.vid,custName:po.vendName,
@@ -4079,14 +4207,14 @@ this.rSales();
 }
 
 static delInv(id){
-const i=this.inv.find(x=>x.id===id);
+const i=this.inv.find(x=>String(x.id)===String(id));
 if(i.status==='paid'){
 this.log('warning','Cannot delete paid invoice - audit compliance');
 this.alert('Cannot delete paid invoice '+i.num+'. Paid invoices must be voided or archived for audit compliance.');
 return;
 }
 this.confirm('Delete invoice '+i.num+'? This cannot be undone.',()=>{
-this.inv=this.inv.filter(x=>x.id!==id);
+this.inv=this.inv.filter(x=>String(x.id)!==String(id));
 this.save();
 this.log('warning','Invoice '+i.num+' deleted');
 this.rSales();
@@ -4095,20 +4223,31 @@ this.updCards();this.updMetrics();
 }
 
 static delPO(id){
-const p=this.po.find(x=>x.id===id);
-if(p.status==='paid'){
-this.log('warning','Cannot delete paid PO - audit compliance');
-this.alert('Cannot delete paid PO '+p.num+'. Paid purchase orders must be archived for audit compliance.');
-return;
-}
+const p=this.po.find(x=>String(x.id)===String(id));
+if(!p)return;
 this.confirm('Delete PO '+p.num+'? This cannot be undone.',()=>{
-this.po=this.po.filter(x=>x.id!==id);
-this.save();
-this.log('warning','PO '+p.num+' deleted');
-this.rPO();
-this.updCards();
-this.updMetrics();
-});
+  if(p._stockApplied&&p.items){
+    p.items.forEach(item=>{
+      if(item.pid){
+        const prod=this.prod.find(pr=>String(pr.id)===String(item.pid));
+        if(prod){
+          prod.qty=Math.max(0,(prod.qty||0)-item.qty);
+          this._appendStockHistory(prod,'reversal',-item.qty,p.num+'-DEL');
+          this.log('warn','Stock reversed: '+prod.name+' -'+item.qty);
+        }
+      }
+    });
+    const revIdx=this.journalEntries.findIndex(je=>je.description&&je.description.includes(p.num)&&je.description.includes('payment'));
+    if(revIdx>=0)this.journalEntries.splice(revIdx,1);
+    this.rebuildLedger();
+  }
+  this.po=this.po.filter(x=>String(x.id)!==String(id));
+  this.save();
+  this.log('warning','PO '+p.num+' deleted');
+  this.rPO();
+  this.updCards();
+  this.updMetrics();
+},'Delete PO');
 }
 
 // ── Shared PDF header/footer — used by all document PDFs ─────────────────
@@ -4176,7 +4315,7 @@ static pdf(id,type){
 try{
 const{jsPDF}=window.jspdf;
 if(type==='inv'){
-const doc=this.inv.find(x=>x.id===id);
+const doc=this.inv.find(x=>String(x.id)===String(id));
 if(!doc)return;
 this.log('info','Generating Invoice PDF: '+doc.num);
 const d=new jsPDF();
@@ -4235,7 +4374,7 @@ d.save(doc.num+'.pdf');
 this.log('success','Invoice PDF saved: '+doc.num+'.pdf');
 
 }else if(type==='po'){
-const doc=this.po.find(x=>x.id===id);
+const doc=this.po.find(x=>String(x.id)===String(id));
 if(!doc)return;
 this.log('info','Generating PO PDF: '+doc.num);
 const d=new jsPDF();
@@ -5146,10 +5285,16 @@ h+=`<div style="margin-top:.5rem;color:var(--txt2);font-size:.75rem">Fingerprint
 h+='</div>';
 h+='</div>';
 }
-// ── Contribution Record ───────────────────────────────────────────────
+// ── Gift Economy — always visible ─────────────────────────────────────
 const contributions=this.getContributions();
-if(contributions.length>0){
 h+='<div style="margin-top:1.5rem;padding:1.5rem;background:var(--bg);border-radius:8px;border-left:3px solid var(--p)">';
+h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem">';
+h+='<h4 style="color:var(--p)">🌱 Gift Economy</h4>';
+h+='<button class="btn btn-sec" style="font-size:.8rem" onclick="BOS.showContributionModal()">Give Freely</button>';
+h+='</div>';
+h+='<p style="font-size:.8rem;color:var(--txt2);margin-bottom:1rem">This vessel was built and given freely. Your stewardship — as use, care, or contribution — sustains the ecosystem. A voluntary gift when value is received is the soul of sovereign exchange.</p>';
+if(contributions.length>0){
+h+='<div style="border-top:1px solid var(--bord);padding-top:1rem">';
 h+='<h4 style="margin-bottom:1rem;color:var(--p)">🤝 Stewardship Record</h4>';
 const total=contributions.reduce((s,x)=>s+(x.amount||0),0);
 const confirmed=contributions.filter(x=>x.confirmed).length;
@@ -5172,7 +5317,8 @@ h+=`<div style="display:flex;align-items:center;gap:.75rem;font-size:.85rem;padd
 h+='</div>';
 h+='<div style="margin-top:1rem;font-size:.75rem;color:var(--txt2)">✅ Stripe confirmed &nbsp;·&nbsp; ⏳ Initiated / pending confirmation</div>';
 h+='</div>';
-}
+} // end contributions.length>0
+h+='</div>'; // close gift economy panel
 h+='</div></div>';
 h+='</div>';
 
@@ -5415,9 +5561,10 @@ this.alert('Journal entry not balanced! Debits: '+this.cfg.sym+this.fmt(totalDeb
 return false;
 }
 
+const _jeId=this.nxt.je++;
 const je={
-id:this.nxt.je++,
-ref:data.ref||('JE-'+String(this.nxt.je).padStart(4,'0')),
+id:_jeId,
+ref:data.ref||('JE-'+String(_jeId).padStart(4,'0')),
 date:data.date||new Date().toISOString().split('T')[0],
 description:data.description,
 lines:data.lines,
@@ -5755,7 +5902,11 @@ h+=`<div class="row" style="grid-template-columns:1fr 3fr 1fr 1fr">
 <div>${a.code}</div>
 <div>${a.name}${a.contra?' (Contra)':''}</div>
 <div style="color:${balColor};font-weight:600">${this.cfg.sym}${this.fmt(Math.abs(a.balance))}</div>
-<div><button class="btn btn-sec" onclick="BOS.viewLedger('${a.code}')">Ledger</button></div>
+<div style="display:flex;gap:.3rem">
+<button class="btn btn-sec" style="font-size:.8rem" onclick="BOS.viewLedger('${a.code}')">Ledger</button>
+${!a.system?`<button class="btn btn-sec" style="font-size:.8rem" onclick="BOS.editAccount('${a.code}')">✏️</button>
+<button class="btn btn-dang" style="font-size:.8rem" onclick="BOS.delAccount('${a.code}')">✕</button>`:''}
+</div>
 </div>`;
 });
 h+='</div></div>';
@@ -6552,7 +6703,7 @@ this.rJournal();
 
 // View Journal Entry Detail (stub)
 static viewJournalEntry(id){
-const je=this.journalEntries.find(e=>e.id===id);
+const je=this.journalEntries.find(e=>String(e.id)===String(id));
 if(!je)return;
 
 // Build detailed view as HTML
@@ -6634,6 +6785,44 @@ setTimeout(()=>el.style.outline='',2000);
 }
 
 // Add Custom Account
+static editAccount(code){
+  const a=this.accounts.find(x=>String(x.code)===String(code));
+  if(!a)return;
+  this.confirm(`<div style="max-width:420px">
+<h4 style="margin-bottom:1rem">✏️ Edit Account</h4>
+<div style="display:grid;gap:.75rem">
+<div class="form-group"><label class="form-label" for="ea-code">Code</label>
+<input class="form-input" id="ea-code" value="${this._escHtml(String(a.code))}" readonly style="opacity:.6"></div>
+<div class="form-group"><label class="form-label" for="ea-name">Account Name *</label>
+<input class="form-input" id="ea-name" value="${this._escHtml(a.name)}"></div>
+<div class="form-group"><label class="form-label" for="ea-type">Type</label>
+<select class="form-select" id="ea-type">
+${['asset','liability','equity','income','expense'].map(t=>`<option value="${t}" ${a.type===t?'selected':''}>${t}</option>`).join('')}
+</select></div>
+<div class="form-group"><label class="form-label" for="ea-desc">Description</label>
+<input class="form-input" id="ea-desc" value="${this._escHtml(a.description||'')}"></div>
+</div></div>`,()=>{
+    const n=document.getElementById('ea-name').value.trim();
+    if(!n){this.log('warning','Account name required');return;}
+    a.name=n; a.type=document.getElementById('ea-type').value;
+    a.description=document.getElementById('ea-desc').value;
+    this.save(); this.log('success','Account '+code+' updated'); this.rAccountingTab('coa');
+  },'💾 Save');
+}
+static delAccount(code){
+  const a=this.accounts.find(x=>String(x.code)===String(code));
+  if(!a)return;
+  // Guard: cannot delete if has journal entries
+  const hasJE=(this.journalEntries||[]).some(je=>(je.lines||[]).some(l=>String(l.account)===String(code)));
+  if(hasJE){
+    this.alert('Cannot delete account '+code+' — it has journal entries. Zero the balance first or merge into another account.');
+    return;
+  }
+  this.confirm('Delete account '+code+' '+a.name+'? This cannot be undone.',()=>{
+    this.accounts=this.accounts.filter(x=>String(x.code)!==String(code));
+    this.save(); this.log('warning','Account '+code+' deleted'); this.rAccountingTab('coa');
+  },'Delete Account');
+}
 static addAccount(){
 const typeOpts = [
   ['1000-1999','Assets'],['2000-2999','Liabilities'],['3000-3999','Equity'],
@@ -6672,10 +6861,10 @@ if(this.accounts.find(a=>String(a.code)===String(num)||String(a.num)===String(nu
 }
 const acc={code:num,num,name,type,desc,custom:true,balance:0,createdAt:new Date().toISOString()};
 this.accounts.push(acc);
-this.accounts.sort((a,b)=>a.num.localeCompare(b.num));
+this.accounts.sort((a,b)=>(String(a.num||a.code||0)).localeCompare(String(b.num||b.code||0)));
 this.save();
 this.log('success','Account '+num+' '+name+' added to Chart of Accounts');
-this.rCOA();
+this.rAccountingTab('coa');
 },'➕ Add Account');
 }
 
@@ -8227,7 +8416,7 @@ Cr. Revenue (4000) TT$680
 </div>
 <div style="background:var(--bg);padding:2rem;border-radius:var(--rad);border-left:4px solid var(--warn)">
 <h3 style="color:var(--warn);margin-bottom:1rem">Q: What if the approval gets "stuck" — BiBBOS approved but SPM still shows pending?</h3>
-<p style="color:var(--txt2);line-height:1.8"><strong>A:</strong> Fixed in v6.8/v2.3.5. The old architecture had a stale heartbeat poisoning problem: SPM would send a heartbeat with <code>status: pending-approval</code> that arrived after BiBBOS approved, re-triggering the "Awaiting approval" banner. The fix: BiBBOS checks the submission timestamp against its <code>approvedAt</code> timestamp — older submissions are discarded. SPM's approval guard was also simplified to use only <code>vessel.status === 'pending-approval'</code> as the gate.</p>
+<p style="color:var(--txt2);line-height:1.8"><strong>A:</strong> Fixed in v6.9/v2.3.5. The old architecture had a stale heartbeat poisoning problem: SPM would send a heartbeat with <code>status: pending-approval</code> that arrived after BiBBOS approved, re-triggering the "Awaiting approval" banner. The fix: BiBBOS checks the submission timestamp against its <code>approvedAt</code> timestamp — older submissions are discarded. SPM's approval guard was also simplified to use only <code>vessel.status === 'pending-approval'</code> as the gate.</p>
 </div>
 <div style="background:var(--bg);padding:2rem;border-radius:var(--rad);border-left:4px solid var(--info)">
 <h3 style="color:var(--info);margin-bottom:1rem">Q: Can I run multiple BiBBOS entities all connected to the same SPM at once?</h3>
@@ -8266,7 +8455,7 @@ Cr. Revenue (4000) TT$680
 <div style="display:grid;gap:1.5rem;margin-bottom:2rem">
 <div style="background:var(--bg);padding:1.5rem;border-radius:var(--rad);border-left:4px solid #7C3AED">
 <h4 style="margin-bottom:.5rem">Claude (Anthropic) — Primary Architect</h4>
-<p style="color:var(--txt2);font-size:.875rem">Core architecture, Knowledge module (65 slides), double-entry accounting engine, General Ledger, V2V invoice exchange, Caribbean payroll, Advanced Reports, commissioning wizard, formation hub (WebSocket, backpressure, compact registry, FAIR/CARE vesselGenesis), memory leak resolution, BiBBOS v6.9 · SPM v2.4 · Masthead v5.0 · server.js v2 — full formation constellation</p>
+<p style="color:var(--txt2);font-size:.875rem">Core architecture, Knowledge module (66 slides), double-entry accounting engine, General Ledger, V2V invoice exchange, Caribbean payroll, Advanced Reports, commissioning wizard, formation hub (WebSocket, backpressure, compact registry, FAIR/CARE vesselGenesis), memory leak resolution, BiBBOS v6.9 · SPM v2.4 · Masthead v5.0 · server.js v2 — full formation constellation</p>
 </div>
 <div style="background:var(--bg);padding:1.5rem;border-radius:var(--rad);border-left:4px solid #FF6B00">
 <h4 style="margin-bottom:.5rem">Grok (xAI)</h4>
@@ -8849,13 +9038,13 @@ const total=this.slides.length;
 const curr=this.currentSlide;
 for(let i=0;i<Math.min(total,15);i++){
 const active=i===curr?'background:var(--p)':'background:var(--bord)';
-h+=`<div style="width:8px;height:8px;border-radius:50%;${active};cursor:pointer;transition:all .2s;min-width:8px" onclick="BOS.jumpToSlide(${i})"></div>`;
+h+=`<div style="width:8px;height:8px;border-radius:50%;${active};cursor:pointer;transition:all .2s;min-width:8px" onclick="BOS.jumpToSlide('${i}')"></div>`;
 }
 if(curr>=15&&curr<total-5){
 h+=`<span style="color:var(--txt2);margin:0 .2rem">…</span>`;
 for(let i=Math.max(15,curr-2);i<=Math.min(total-6,curr+2);i++){
 const active=i===curr?'background:var(--p);width:12px;height:12px':'background:var(--bord);width:8px;height:8px';
-h+=`<div style="border-radius:50%;${active};cursor:pointer;transition:all .2s" onclick="BOS.jumpToSlide(${i})"></div>`;
+h+=`<div style="border-radius:50%;${active};cursor:pointer;transition:all .2s" onclick="BOS.jumpToSlide('${i}')"></div>`;
 }
 h+=`<span style="color:var(--txt2);margin:0 .2rem">…</span>`;
 }else if(curr<15&&total>20){
@@ -8864,7 +9053,7 @@ h+=`<span style="color:var(--txt2);margin:0 .2rem">…</span>`;
 if(total>15){
 for(let i=Math.max(15,total-5);i<total;i++){
 const active=i===curr?'background:var(--p)':'background:var(--bord)';
-h+=`<div style="width:8px;height:8px;border-radius:50%;${active};cursor:pointer;transition:all .2s;min-width:8px" onclick="BOS.jumpToSlide(${i})"></div>`;
+h+=`<div style="width:8px;height:8px;border-radius:50%;${active};cursor:pointer;transition:all .2s;min-width:8px" onclick="BOS.jumpToSlide('${i}')"></div>`;
 }
 }
 h+=`<span style="color:var(--txt2);margin-left:.5rem;font-size:.8rem">${curr+1}/${total}</span>`;
@@ -8969,10 +9158,11 @@ h+=`<div class="row" style="grid-template-columns:3rem 2fr 1.5fr 1fr 1fr 1fr 1.5
 <div>${this.cfg.sym||'$'}${this.fmt(e.rate||0)}<span style="font-size:.7rem;color:var(--txt2)">/${e.rateType==='salary'?'mo':'hr'}</span></div>
 <div>${statusBadge}</div>
 <div style="display:flex;gap:.4rem;flex-wrap:wrap">
-${(e.rateType==='job'||e.rateType==='daily')?'<button class="btn btn-sec" style="font-size:.8rem" onclick="BOS.logJob('+e.id+')">📋</button>':''}<button class="btn btn-sec" onclick="BOS.editEmployee(${e.id})">✏️</button>
-<button class="btn" style="background:var(--succ);color:#fff" onclick="BOS.quickPunch(${e.id})">${punch?'🔴 Out':'🟢 In'}</button>
-<button class="btn btn-sec" onclick="BOS.viewEmpHistory(${e.id})">📋</button>
-<button class="btn btn-sec" onclick="BOS.viewEmpIDCard(${e.id})">🪪</button>
+${(e.rateType==='job'||e.rateType==='daily')?`<button class="btn btn-sec" style="font-size:.8rem" onclick="BOS.logJob('${e.id}')">📋</button>`:''}<button class="btn btn-sec" onclick="BOS.editEmployee('${e.id}')">✏️</button>
+<button class="btn" style="background:var(--succ);color:#fff" onclick="BOS.quickPunch('${e.id}')">${punch?'🔴 Out':'🟢 In'}</button>
+<button class="btn btn-sec" onclick="BOS.viewEmpHistory('${e.id}')">📋</button>
+<button class="btn btn-sec" onclick="BOS.viewEmpIDCard('${e.id}')">🪪</button>
+<button class="btn btn-dang" style="font-size:.75rem;padding:.2rem .5rem" onclick="BOS.delEmployee('${e.id}')" title="Delete employee">✕</button>
 </div></div>`;
 });
 h+='</div>';
@@ -8991,7 +9181,7 @@ const h=`<div style="max-width:700px">
 <div class="form-group"><label class="form-label" for="emp-email">Email</label><input class="form-input" id="emp-email" type="email" placeholder="employee@email.com"></div>
 <div class="form-group"><label class="form-label" for="emp-phone">Phone</label><input class="form-input" id="emp-phone" placeholder="+1 868 000-0000"></div>
 <div class="form-group"><label class="form-label" for="emp-start">Start Date *</label><input class="form-input" id="emp-start" type="date" value="${new Date().toISOString().split('T')[0]}"></div>
-<div class="form-group"><label class="form-label" id="emp-icon-lbl">Icon</label>
+<div class="form-group"><label class="form-label" for="emp-icon" id="emp-icon-lbl">Icon</label>
 <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.25rem" id="emp-icon-row" role="group" aria-label="Select employee icon">
 ${['👤','👨‍💼','👩‍💼','👨‍🔧','👩‍🔧','👨‍🍳','👩‍🍳','👨‍💻','👩‍💻','👮','🧑‍🏫','🧑‍⚕️'].map(ic=>`<div class="opt" style="padding:.4rem;font-size:1.25rem" onclick="BOS._selEmpIcon(this,'${ic}')">${ic}</div>`).join('')}
 </div></div>
@@ -9191,7 +9381,7 @@ return base[ind] || base['Other'];
 // ── JOB LOG — for per-job and daily workers ────────────────────
 // Also used for informal worker encounters (grass cutter, etc.)
 static logJob(empId){
-const e=this.employees.find(x=>x.id===empId);
+const e=this.employees.find(x=>String(x.id)===String(empId));
 const sym=this.cfg.sym||'$';
 const today=new Date().toISOString().split('T')[0];
 // Build recent jobs summary for the modal
@@ -9281,8 +9471,8 @@ h+=`<div class="row" style="grid-template-columns:2fr 2fr 1fr 1fr 1fr 1fr;align-
 <div style="font-weight:700">${sym}${this.fmt(enc.amount)}</div>
 <div><span class="status ${isPaid?'paid':'draft'}">${isPaid?'Paid':'Owed'}</span></div>
 <div style="display:flex;gap:.35rem;flex-wrap:wrap">
-${!isPaid?`<button class="btn btn-sec" style="font-size:.75rem" onclick="BOS._payEncounter(${enc.id})">💵 Pay</button>`:''}
-<button class="btn btn-sec" style="font-size:.75rem" onclick="BOS._convertToEmployee(${enc.id})">👷 Hire</button>
+${!isPaid?`<button class="btn btn-sec" style="font-size:.75rem" onclick="BOS._payEncounter('${enc.id}')">💵 Pay</button>`:''}
+<button class="btn btn-sec" style="font-size:.75rem" onclick="BOS._convertToEmployee('${enc.id}')">👷 Hire</button>
 </div>
 </div>`;
 });
@@ -9409,7 +9599,7 @@ const empId=parseInt(document.getElementById('mt-emp')?.value);
 const info=document.getElementById('mt-emp-info');
 if(!info)return;
 if(!empId){info.style.display='none';return;}
-const e=this.employees.find(x=>x.id===empId);
+const e=this.employees.find(x=>String(x.id)===String(empId));
 if(!e){info.style.display='none';return;}
 const sym=this.cfg.sym||'$';
 const rateLabels={hourly:'per hour',salary:'monthly salary',daily:'per day',job:'per job'};
@@ -9477,8 +9667,39 @@ this.updCards();
 this.rHR();
 }
 
+static delEmployee(id){
+  const e=this.employees.find(x=>String(x.id)===String(id));
+  if(!e){this.log('warning','Employee not found');return;}
+  const hasTimesheets=(this.timesheets||[]).some(t=>String(t.empId)===String(id));
+  const hasPayroll=(this.payrollRuns||[]).some(r=>(r.entries||[]).some(en=>String(en.empId)===String(id)));
+  if(hasTimesheets||hasPayroll){
+    BOS._pendingTerminateId=id;
+    const _refs=(hasTimesheets?'timesheet records':'')+( hasTimesheets&&hasPayroll?' and ':'')+( hasPayroll?'payroll entries':'');
+    this.alert(
+      `<div><h4 style="margin-bottom:.75rem">⚠️ Cannot Delete Employee</h4>`
+      +`<p style="color:var(--txt2);font-size:.875rem;margin-bottom:1rem">`
+      +`<strong>${this._escHtml(e.name)}</strong> has ${_refs} on file.<br><br>`
+      +`First delete their Timesheet/Payroll records, or set status to Terminated instead.</p>`
+      +`<div style="display:flex;gap:.5rem;justify-content:flex-end">`
+      +`<button class="btn btn-sec" onclick="document.getElementById('alert-modal').classList.remove('show')">OK</button>`
+      +`<button class="btn" style="background:var(--warn);color:#000" onclick="document.getElementById('alert-modal').classList.remove('show');BOS._terminateEmployee(BOS._pendingTerminateId)">Set Terminated Instead</button>`
+      +`</div></div>`
+    );
+    return;
+  }
+  this.confirm('Delete employee '+e.name+'? This cannot be undone.',()=>{
+    this.employees=this.employees.filter(x=>String(x.id)!==String(id));
+    this.save();
+    this.log('info','Employee deleted: '+e.name);
+    this.rHR();
+  },'Delete Employee');
+}
+static _terminateEmployee(id){
+  const e=this.employees.find(x=>String(x.id)===String(id));
+  if(e){e.status='terminated';this.save();this.rHR();this.log('info','Employee terminated: '+e.name);}
+}
 static editEmployee(id){
-const e=this.employees.find(x=>x.id===id);
+const e=this.employees.find(x=>String(x.id)===String(id));
 if(!e)return;
 this.newEmployee();
 setTimeout(()=>{
@@ -9525,7 +9746,7 @@ return`<div style="display:flex;align-items:center;gap:.75rem;padding:.5rem 0;bo
 <span style="font-size:1.5rem">${e?.icon||'👤'}</span>
 <div><div style="font-weight:600">${e?.name||'Unknown'}</div>
 <div style="font-size:.75rem;color:var(--succ)">In: ${p.in}</div></div>
-<button class="btn btn-sec" style="margin-left:auto;font-size:.8rem" onclick="BOS.punchOut(${p.id})">🔴 ${this.u('punchOut')}</button>
+<button class="btn btn-sec" style="margin-left:auto;font-size:.8rem" onclick="BOS.punchOut('${p.id}')">🔴 ${this.u('punchOut')}</button>
 </div>`;}).join(''):`<div style="color:var(--txt2);font-size:.875rem;padding:.5rem 0">No one on compound</div>`}
 </div>
 <div style="background:var(--card);padding:1.5rem;border-radius:var(--rad)">
@@ -9576,7 +9797,7 @@ return Math.max(0,((oh*60+om)-(ih*60+im))/60);
 }
 
 static punchIn(empId,time=null){
-const e=this.employees.find(x=>x.id===empId);
+const e=this.employees.find(x=>String(x.id)===String(empId));
 if(!e){this.log('warning','Employee not found');return;}
 const existing=this.punches.find(p=>p.empId===empId&&p.in&&!p.out);
 if(existing){this.log('warning',`${e.name} is already clocked in`);return;}
@@ -9701,8 +9922,8 @@ h+=`<div class="row" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr 1fr;al
 <div style="font-weight:600">${(t.totalHours||0).toFixed(2)}h</div>
 <div><span class="status ${t.status==='approved'?'paid':t.status==='pending'?'draft':'sent'}">${t.status}</span></div>
 <div style="display:flex;gap:.4rem">
-${t.status==='pending'?`<button class="btn" style="background:var(--succ);color:#fff;font-size:.8rem" onclick="BOS.approveTimesheet(${t.id})">✓</button>`:''}
-<button class="btn btn-sec" style="font-size:.8rem" onclick="BOS.editTimesheet(${t.id})">✏️</button>
+${t.status==='pending'?`<button class="btn" style="background:var(--succ);color:#fff;font-size:.8rem" onclick="BOS.approveTimesheet('${t.id}')">✓</button>`:''}
+<button class="btn btn-sec" style="font-size:.8rem" onclick="BOS.editTimesheet('${t.id}')">✏️</button>
 </div></div>`;
 });
 h+='</div>';
@@ -9746,12 +9967,12 @@ this.rTimesheet();
 }
 
 static approveTimesheet(id){
-const t=this.timesheets.find(x=>x.id===id);
+const t=this.timesheets.find(x=>String(x.id)===String(id));
 if(t){t.status='approved';this.save();this.log('success','Timesheet approved');this.rTimesheet();}
 }
 
 static editTimesheet(id){
-const t=this.timesheets.find(x=>x.id===id);
+const t=this.timesheets.find(x=>String(x.id)===String(id));
 const e=this.employees.find(x=>x.id===t?.empId);
 if(!t||!e)return;
 this.confirm(`<div style="max-width:360px">
@@ -9793,9 +10014,9 @@ h+=`<div class="row" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr;align-
 <div style="color:var(--err,#dc2626)">${this.cfg.sym||'$'}${this.fmt(r.totalDeductions||0)}</div>
 <div style="font-weight:700;color:var(--succ)">${this.cfg.sym||'$'}${this.fmt(r.totalNet||0)}</div>
 <div style="display:flex;gap:.4rem">
-<button class="btn btn-sec" onclick="BOS.viewPayrollRun(${r.id})">View</button>
-<button class="btn btn-sec" onclick="BOS.pdfPayroll(${r.id})">PDF</button>
-${r.status!=="reversed"?`<button class="btn btn-sec" style="color:var(--err,#dc2626);border-color:var(--err,#dc2626)" onclick="BOS.reversePayroll(${r.id})">↩</button>`:`<span style="font-size:.75rem;color:var(--succ);padding:.35rem">✔ Rev.</span>`}
+<button class="btn btn-sec" onclick="BOS.viewPayrollRun('${r.id}')">View</button>
+<button class="btn btn-sec" onclick="BOS.pdfPayroll('${r.id}')">PDF</button>
+${r.status!=="reversed"?`<button class="btn btn-sec" style="color:var(--err,#dc2626);border-color:var(--err,#dc2626)" onclick="BOS.reversePayroll('${r.id}')">↩</button>`:`<span style="font-size:.75rem;color:var(--succ);padding:.35rem">✔ Rev.</span>`}
 </div></div>`;
 });
 h+='</div>';
@@ -10148,8 +10369,8 @@ ${isReversed?`<span style="background:var(--warn);color:#000;padding:.2rem .6rem
 </div>
 <div style="display:flex;gap:.75rem;flex-wrap:wrap">
 <button class="btn btn-sec" onclick="BOS.rPayroll()">← Back</button>
-<button class="btn btn-sec" onclick="BOS.pdfPayroll(${run.id})">📄 Payslips PDF</button>
-${!isReversed?`<button class="btn btn-sec" style="color:var(--err,#dc2626);border-color:var(--err,#dc2626)" onclick="BOS.reversePayroll(${run.id})">↩ Reverse Run</button>`:`<span style="color:var(--succ);padding:.35rem .75rem">✔ Already Reversed</span>`}
+<button class="btn btn-sec" onclick="BOS.pdfPayroll('${run.id}')">📄 Payslips PDF</button>
+${!isReversed?`<button class="btn btn-sec" style="color:var(--err,#dc2626);border-color:var(--err,#dc2626)" onclick="BOS.reversePayroll('${run.id}')">↩ Reverse Run</button>`:`<span style="color:var(--succ);padding:.35rem .75rem">✔ Already Reversed</span>`}
 </div>
 </div>
 <div class="tbl"><div class="row hdr" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr">
@@ -10170,7 +10391,7 @@ document.getElementById('exp-body').innerHTML=h;
 }
 
 static viewEmpHistory(id){
-const e=this.employees.find(x=>x.id===id);
+const e=this.employees.find(x=>String(x.id)===String(id));
 if(!e)return;
 const sym=this.cfg.sym||'$';
 const empTs=this.timesheets.filter(t=>t.empId===id).sort((a,b)=>b.date.localeCompare(a.date));
@@ -10201,7 +10422,7 @@ ${empTs.slice(0,10).map(t=>`<div style="display:flex;justify-content:space-betwe
 <span class="status ${t.status==='approved'?'paid':'draft'}">${t.status}</span></div>`).join('')||'<div style="color:var(--txt2)">No timesheet records</div>'}
 <div style="display:flex;gap:1rem;margin-top:1.5rem">
 <button class="btn btn-sec" onclick="BOS.rHR()">← Back</button>
-<button class="btn btn-sec" onclick="BOS.editEmployee(${e.id})">✏️ Edit Capsule</button>
+<button class="btn btn-sec" onclick="BOS.editEmployee('${e.id}')">✏️ Edit Capsule</button>
 </div></div>`;
 }
 
@@ -10434,7 +10655,7 @@ return`BOS:EMP:${emp.num}:${emp.id}:${(emp.name||'').replace(/:/g,'-')}`;
 
 // Employee ID Card — printable HTML with QR
 static viewEmpIDCard(id){
-const e=this.employees.find(x=>x.id===id);
+const e=this.employees.find(x=>String(x.id)===String(id));
 if(!e)return;
 const payload=this._empQRPayload(e);
 const matrix=this._qrGenerate(payload);
@@ -10471,7 +10692,7 @@ ${e.idNum?`<div><span style="color:var(--txt2)">National ID:</span> ${e.idNum}</
 </div>
 <div style="display:flex;gap:.75rem;flex-wrap:wrap">
 <button class="btn btn-sec" onclick="BOS.rHR()">← Back</button>
-<button class="btn btn-sec" onclick="BOS.viewEmpHistory(${e.id})">📋 History</button>
+<button class="btn btn-sec" onclick="BOS.viewEmpHistory('${e.id}')">📋 History</button>
 <button class="btn" onclick="window.print()">🖨️ Print Card</button>
 </div>
 <div style="margin-top:1rem;font-size:.8rem;color:var(--txt2);background:var(--bg);padding:.75rem;border-radius:6px">
@@ -10507,7 +10728,7 @@ ${empOptions.map(e=>{
 const punch=onClock.find(p=>p.empId===e.id);
 const isIn=!!punch;
 const qrSVG=this._qrSVG(this._qrGenerate(this._empQRPayload(e)),56,'#fff','transparent');
-return`<div style="display:flex;align-items:center;gap:1rem;background:rgba(255,255,255,.06);border:1px solid ${isIn?'rgba(34,197,94,.4)':'rgba(255,255,255,.1)'};border-radius:10px;padding:.75rem 1rem;cursor:pointer" onclick="BOS._scanPunch(${e.id},${punch?punch.id:0})">
+return`<div style="display:flex;align-items:center;gap:1rem;background:rgba(255,255,255,.06);border:1px solid ${isIn?'rgba(34,197,94,.4)':'rgba(255,255,255,.1)'};border-radius:10px;padding:.75rem 1rem;cursor:pointer" onclick="BOS._scanPunch('${e.id}',${punch?punch.id:0})">
 <div style="font-size:2rem">${e.icon||'👤'}</div>
 <div style="flex:1">
 <div style="color:#fff;font-weight:600">${e.name}</div>
@@ -10662,7 +10883,7 @@ document.getElementById('exp-body').innerHTML=h;
 // Intelligence - Predictive Insights
 // ── Phase 4.1.4: Customer History ────────────────────────────────────────
 static rCustomerHistory(cid){
-const p=this.people.find(x=>x.id===cid);
+const p=this.people.find(x=>String(x.id)===String(cid));
 if(!p){this.alert('Customer not found');return;}
 const invs=this.inv.filter(i=>i.cid===cid).sort((a,b)=>new Date(b.date)-new Date(a.date));
 const totalRev=invs.reduce((s,i)=>s+(i.total||0),0);
@@ -10715,7 +10936,7 @@ document.querySelector('.exp-body').scrollTop=0;
 
 // ── Phase 4.1.4: Product History ─────────────────────────────────────────
 static rProductHistory(pid){
-const p=this.prod.find(x=>x.id===pid);
+const p=this.prod.find(x=>String(x.id)===String(pid));
 if(!p){this.alert('Product not found');return;}
 // Build sales history
 const sales=[];
@@ -12024,9 +12245,11 @@ h+=`<div class="row" style="grid-template-columns:1fr 2fr 2fr 1fr 1fr 1.5fr;alig
 <div>${modeIcon} <span style="font-size:.8rem">${d.mode||'road'}</span></div>
 <div><span style="background:${statusColor};color:#fff;padding:.2rem .6rem;border-radius:20px;font-size:.75rem">${d.status}</span></div>
 <div style="display:flex;gap:.4rem;flex-wrap:wrap">
-<button class="btn btn-sec" style="font-size:.8rem" onclick="BOS.viewDelivery(${d.id})">View</button>
-<button class="btn btn-sec" style="font-size:.8rem" onclick="BOS.advanceDelivery(${d.id})">▶</button>
-<button class="btn" style="font-size:.8rem" onclick="BOS.pdfDelivery(${d.id})">PDF</button>
+<button class="btn btn-sec" style="font-size:.8rem" onclick="BOS.viewDelivery('${d.id}')">View</button>
+<button class="btn btn-sec" style="font-size:.8rem" onclick="BOS.advanceDelivery('${d.id}')">▶</button>
+<button class="btn" style="font-size:.8rem" onclick="BOS.pdfDelivery('${d.id}')">PDF</button>
+${d.status!=='delivered'?`<button class="btn btn-sec" style="font-size:.8rem" onclick="BOS.editDelivery('${d.id}')">✏️</button>`:''}
+<button class="btn btn-dang" style="font-size:.8rem" onclick="BOS.delDelivery('${d.id}')">✕</button>
 </div></div>`;
 });
 h+='</div>';
@@ -12136,11 +12359,22 @@ this.newDelivery(invId);
 }
 
 static advanceDelivery(id){
-const d=this.deliveries.find(x=>x.id===id);
+const d=this.deliveries.find(x=>String(x.id)===String(id));
 if(!d)return;
 const flow=['pending','in-transit','delivered'];
 const cur=flow.indexOf(d.status);
-if(cur<0||cur>=flow.length-1){this.log('info','Delivery already at final status');return;}
+if(cur<0){this.log('info','Unknown delivery status');return;}
+// Allow reversal from delivered with confirmation
+if(cur>=flow.length-1){
+  this.confirm('This delivery is marked as delivered. Revert to In Transit?',()=>{
+    d.status='in-transit';
+    if(d.deliveredAt)delete d.deliveredAt;
+    d.statusLog=d.statusLog||[];
+    d.statusLog.push({status:'in-transit',time:new Date().toISOString(),note:'Reverted from delivered'});
+    this.save();this.log('warn','Delivery reverted: in-transit');this.rDelivery();
+  },'↩ Revert to In Transit');
+  return;
+}
 const next=flow[cur+1];
 d.status=next;
 d.statusLog=d.statusLog||[];
@@ -12154,7 +12388,7 @@ this.rDelivery();
 }
 
 static viewDelivery(id){
-const d=this.deliveries.find(x=>x.id===id);
+const d=this.deliveries.find(x=>String(x.id)===String(id));
 if(!d)return;
 const modeIcon={road:'🚗',sea:'🚢',air:'✈️',mail:'📮',courier:'📦',walk:'🚶'}[d.mode]||'🚚';
 const statusFlow=['pending','in-transit','delivered'];
@@ -12200,10 +12434,49 @@ ${l.note?`<span style="color:var(--txt2)">${l.note}</span>`:''}
 </div>
 <div style="display:flex;gap:.75rem;flex-wrap:wrap">
 <button class="btn btn-sec" onclick="BOS.rDelivery()">← Back</button>
-${curIdx<statusFlow.length-1?`<button class="btn" style="background:var(--info);color:#fff" onclick="BOS.advanceDelivery(${d.id});BOS.viewDelivery(${d.id})">▶ Advance Status</button>`:''}
-<button class="btn btn-sec" onclick="BOS.logDriverPayment(${d.id})">🚛 Driver Payment</button>
-<button class="btn btn-sec" onclick="BOS.pdfDelivery(${d.id})">📄 Delivery Note PDF</button>
+${curIdx<statusFlow.length-1?`<button class="btn" style="background:var(--info);color:#fff" onclick="BOS.advanceDelivery('${d.id}');BOS.viewDelivery('${d.id}')">▶ Advance Status</button>`:''}
+<button class="btn btn-sec" onclick="BOS.logDriverPayment('${d.id}')">🚛 Driver Payment</button>
+<button class="btn btn-sec" onclick="BOS.pdfDelivery('${d.id}')">📄 Delivery Note PDF</button>
 </div></div>`;
+}
+
+static editDelivery(id){
+  const d=this.deliveries.find(x=>String(x.id)===String(id));
+  if(!d)return;
+  this.confirm(`<div style="max-width:460px">
+<h4 style="margin-bottom:1rem">✏️ Edit Delivery Order</h4>
+<div style="display:grid;gap:.75rem">
+<div class="form-group"><label class="form-label" for="ed-name">Recipient Name</label>
+<input class="form-input" id="ed-name" value="${this._escHtml(d.recipientName||'')}"></div>
+<div class="form-group"><label class="form-label" for="ed-dest">Destination</label>
+<input class="form-input" id="ed-dest" value="${this._escHtml(d.destination||'')}"></div>
+<div class="form-group"><label class="form-label" for="ed-phone">Phone</label>
+<input class="form-input" id="ed-phone" value="${this._escHtml(d.phone||'')}"></div>
+<div class="form-group"><label class="form-label" for="ed-mode">Transport Mode</label>
+<select class="form-select" id="ed-mode">
+${['road','sea','air','mail','courier','walk'].map(m=>`<option value="${m}" ${d.mode===m?'selected':''}>${m}</option>`).join('')}
+</select></div>
+<div class="form-group"><label class="form-label" for="ed-notes">Notes</label>
+<textarea class="form-textarea" id="ed-notes" rows="2">${this._escHtml(d.notes||'')}</textarea></div>
+</div></div>`,()=>{
+    d.recipientName=document.getElementById('ed-name').value;
+    d.destination=document.getElementById('ed-dest').value;
+    d.phone=document.getElementById('ed-phone').value;
+    d.mode=document.getElementById('ed-mode').value;
+    d.notes=document.getElementById('ed-notes').value;
+    this.save();this.log('info','Delivery updated');this.rDelivery();
+  },'💾 Save Changes');
+}
+static delDelivery(id){
+  const d=this.deliveries.find(x=>String(x.id)===String(id));
+  if(!d)return;
+  if(d.status==='delivered'){
+    this.alert('Completed deliveries cannot be deleted (audit record).');return;
+  }
+  this.confirm('Delete delivery DO-'+String(d.id).padStart(4,'0')+'?',()=>{
+    this.deliveries=this.deliveries.filter(x=>String(x.id)!==String(id));
+    this.save();this.log('warning','Delivery deleted');this.rDelivery();
+  },'Delete');
 }
 
 static rDeliveryMap(){
@@ -12235,7 +12508,7 @@ ${d.tracking?`<div style="font-family:monospace;font-size:.75rem;color:var(--inf
 <div style="text-align:right">
 <div style="font-size:.75rem;font-weight:600;color:var(--info)">${d.status}</div>
 ${d.eta?`<div style="font-size:.75rem;color:var(--txt2)">ETA ${d.eta}</div>`:''}
-<button class="btn btn-sec" style="font-size:.75rem;margin-top:.35rem" onclick="BOS.viewDelivery(${d.id})">View</button>
+<button class="btn btn-sec" style="font-size:.75rem;margin-top:.35rem" onclick="BOS.viewDelivery('${d.id}')">View</button>
 </div></div>`).join('');
 }
 document.getElementById('exp-body').innerHTML=h;
@@ -12243,7 +12516,7 @@ document.getElementById('exp-body').innerHTML=h;
 
 static pdfDelivery(id){
 const{jsPDF}=window.jspdf;
-const d=this.deliveries.find(x=>x.id===id);
+const d=this.deliveries.find(x=>String(x.id)===String(id));
 if(!d)return;
 const doc=new jsPDF();
 const sym=this.cfg.sym||'$';
@@ -12380,8 +12653,8 @@ h+=`<div class="row" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr;align-
 <div>${c.targetCount||'All'} cust.</div>
 <div><span class="status ${c.status==='active'?'paid':c.status==='planned'?'draft':'sent'}">${c.status}</span></div>
 <div style="display:flex;gap:.4rem">
-<button class="btn btn-sec" style="font-size:.8rem" onclick="BOS.editCampaign(${c.id})">✏️</button>
-<button class="btn btn-sec" style="font-size:.8rem" onclick="BOS.campaignBroadcast(${c.id})">📨</button>
+<button class="btn btn-sec" style="font-size:.8rem" onclick="BOS.editCampaign('${c.id}')">✏️</button>
+<button class="btn btn-sec" style="font-size:.8rem" onclick="BOS.campaignBroadcast('${c.id}')">📨</button>
 </div></div>`;
 });
 h+='</div>';
@@ -12424,7 +12697,7 @@ this.log('success','Campaign created: '+name);this.rCampaigns();
 }
 
 static editCampaign(id){
-const c=this.campaigns.find(x=>x.id===id);
+const c=this.campaigns.find(x=>String(x.id)===String(id));
 if(!c)return;
 this.confirm(`<div style="max-width:500px">
 <h4 style="margin-bottom:1.25rem">✏️ Edit Campaign</h4>
@@ -12449,6 +12722,15 @@ c.goal=document.getElementById('ec-goal')?.value?.trim()||c.goal;
 this.save();this.log('success','Campaign updated');this.rCampaigns();
 },'💾 Save');
 }
+static delCampaign(id){
+  const c=this.campaigns.find(x=>String(x.id)===String(id));
+  if(!c)return;
+  this.confirm('Delete campaign "'+c.name+'"? This cannot be undone.',()=>{
+    this.campaigns=this.campaigns.filter(x=>String(x.id)!==String(id));
+    this.touchpoints=(this.touchpoints||[]).filter(t=>t.campaignId!==id);
+    this.save();this.log('warning','Campaign deleted: '+c.name);this.rCampaigns();
+  },'Delete Campaign');
+}
 
 static rTouchpoints(){
 const tabs=`<div class="tab-bar"><button class="tab-btn" type="button" onclick="BOS.rMarketing()">📋 Overview</button><button class="tab-btn" type="button" onclick="BOS.rCampaigns()">📢 Campaigns</button><button class="tab-btn active" type="button" onclick="BOS.rTouchpoints()">👋 Touchpoints</button><button class="tab-btn" type="button" onclick="BOS.rBroadcast()">📨 Broadcast</button></div>`;
@@ -12465,16 +12747,21 @@ h+=`<div class="empty"><div style="font-size:3rem;margin-bottom:1rem">👋</div>
 <button class="btn" onclick="BOS.newTouchpoint()">Log First Touchpoint</button></div>`;
 }else{
 const sorted=[...this.touchpoints].sort((a,b)=>b.date.localeCompare(a.date));
-h+=`<div class="tbl"><div class="row hdr" style="grid-template-columns:2fr 1fr 1fr 2fr 1fr 1fr">
-<div>Customer</div><div>Type</div><div>Date</div><div>Note</div><div>Follow-up</div><div>Status</div></div>`;
+h+=`<div class="tbl"><div class="row hdr" style="grid-template-columns:2fr 1fr 1fr 2fr 1fr 1fr 1fr">
+<div>Customer</div><div>Type</div><div>Date</div><div>Note</div><div>Follow-up</div><div>Status</div><div></div></div>`;
 sorted.forEach(t=>{
 const isOverdue=t.followUpDate&&t.followUpDate<=today&&t.status==='pending';
-h+=`<div class="row" style="grid-template-columns:2fr 1fr 1fr 2fr 1fr 1fr;align-items:center;${isOverdue?'background:rgba(239,68,68,.05)':''}">
+h+=`<div class="row" style="grid-template-columns:2fr 1fr 1fr 2fr 1fr 1fr 1fr;align-items:center;${isOverdue?'background:rgba(239,68,68,.05)':''}">
 <div style="font-weight:600">${t.custName||'—'}</div>
 <div>${t.type}</div><div>${t.date}</div>
 <div style="font-size:.8rem;color:var(--txt2)">${(t.note||'').substring(0,40)}</div>
 <div style="font-size:.8rem${isOverdue?';color:var(--err,#dc2626);font-weight:600':''}">${t.followUpDate||'—'}</div>
 <div><span class="status ${t.status==='done'?'paid':'draft'}">${t.status}</span></div>
+<div style="display:flex;gap:.3rem;flex-wrap:wrap">
+${t.status==='pending'?`<button class="btn btn-sec" style="font-size:.72rem;padding:.15rem .45rem" onclick="BOS.doneTouchpoint('${t.id}')">✓</button>`:''}
+<button class="btn btn-sec" style="font-size:.72rem;padding:.15rem .45rem" onclick="BOS.editTouchpoint('${t.id}')">✏️</button>
+<button class="btn btn-dang" style="font-size:.72rem;padding:.15rem .45rem" onclick="BOS.delTouchpoint('${t.id}')">✕</button>
+</div>
 </div>`;
 });
 h+='</div>';
@@ -12575,7 +12862,7 @@ this._broadcastTemplates=templates;
 }
 
 static openTemplate(id){
-const t=this._broadcastTemplates?.find(x=>x.id===id);
+const t=this._broadcastTemplates?.find(x=>String(x.id)===String(id));
 if(!t)return;
 const comp=document.getElementById('broadcast-composer');
 if(comp)comp.style.display='block';
@@ -12608,6 +12895,40 @@ this.log('success','📋 Message copied');
 });
 }
 
+static editTouchpoint(id){
+  const t=this.touchpoints.find(x=>String(x.id)===String(id));
+  if(!t)return;
+  this.confirm(`<div style="max-width:460px">
+<h4 style="margin-bottom:1rem">✏️ Edit Touchpoint</h4>
+<div style="display:grid;gap:.75rem">
+<div class="form-group"><label class="form-label" for="et-note">Note</label>
+<textarea class="form-textarea" id="et-note" rows="3">${this._escHtml(t.note||'')}</textarea></div>
+<div class="form-group"><label class="form-label" for="et-fu">Follow-up Date</label>
+<input class="form-input" type="date" id="et-fu" value="${t.followUpDate||''}"></div>
+<div class="form-group"><label class="form-label" for="et-status">Status</label>
+<select class="form-select" id="et-status">
+<option value="pending" ${t.status==='pending'?'selected':''}>Pending</option>
+<option value="done" ${t.status==='done'?'selected':''}>Done</option>
+</select></div>
+</div></div>`,()=>{
+    t.note=document.getElementById('et-note').value;
+    t.followUpDate=document.getElementById('et-fu').value||null;
+    t.status=document.getElementById('et-status').value;
+    this.save();this.log('info','Touchpoint updated');this.rTouchpoints();
+  },'💾 Save');
+}
+static delTouchpoint(id){
+  const t=this.touchpoints.find(x=>String(x.id)===String(id));
+  if(!t)return;
+  this.confirm('Delete touchpoint for '+(t.custName||'customer')+'?',()=>{
+    this.touchpoints=this.touchpoints.filter(x=>String(x.id)!==String(id));
+    this.save();this.log('warning','Touchpoint deleted');this.rTouchpoints();
+  },'Delete');
+}
+static doneTouchpoint(id){
+  const t=this.touchpoints.find(x=>String(x.id)===String(id));
+  if(t){t.status='done';this.save();this.log('info','Touchpoint done');this.rTouchpoints();}
+}
 static _logBroadcastTouchpoint(){
 const cust=document.getElementById('bc-cust')?.value;
 const channel=document.getElementById('bc-channel')?.value||'Message';
@@ -12890,6 +13211,29 @@ h+='<strong style="color:var(--txt)">How it works:</strong> When a Formation Hub
   +'</span>';
 h+='</div>';
 h+='</div>';
+
+// ── ⬡ Sovereign Vessel Credentials ──────────────────────────────────────
+const _ss=(this.cfg&&this.cfg.vesselGenesis&&this.cfg.vesselGenesis.sovereignStandard)||{};
+const _attr=_ss.attribution||{};
+const _aiPol=_ss.aiPolicy||{};
+h+='<div style="background:var(--card);padding:2rem;border-radius:var(--rad);box-shadow:var(--sh);margin-bottom:2rem;border-top:3px solid var(--p)">';
+h+='<h3 style="margin-bottom:1.5rem">⬡ Sovereign Vessel Credentials</h3>';
+h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:2rem;margin-bottom:1.5rem">';
+h+='<div><h4 style="font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;color:var(--txt2);margin-bottom:.75rem">Human Steward</h4>';
+h+=`<div style="font-size:.875rem;line-height:1.9"><div style="font-weight:600">${_attr.humanSteward||this.cfg.name||'Sovereign Steward'}</div><div style="color:var(--txt2);font-size:.8rem">Build Period: ${_attr.buildPeriod||'—'}</div><div style="color:var(--txt2);font-size:.8rem">License: ${_attr.license||'Sovereign License'}</div></div></div>`;
+h+='<div><h4 style="font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;color:var(--txt2);margin-bottom:.75rem">AI Federation</h4>';
+const _aiFed=(_attr.aiFederation||'Claude (Anthropic) · Grok (xAI) · Gemini (Google DeepMind) · DeepSeek · ChatGPT (OpenAI)').split(' · ');
+h+='<div style="display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:.5rem">';
+_aiFed.forEach(ai=>{const ic=ai.includes('Claude')?'🤖':ai.includes('Grok')?'⚡':ai.includes('Gemini')?'💎':ai.includes('Deep')?'🧠':'✦';h+=`<span style="background:var(--bg);padding:.2rem .55rem;border-radius:20px;font-size:.72rem;border:1px solid var(--bord)">${ic} ${ai}</span>`;});
+h+='</div>';
+h+=`<div style="font-size:.72rem;color:var(--txt2)">Local: ${_aiPol.allowLocalProcessing?'✓':'—'} · Egress: ${_aiPol.allowExternalEgress?'allowed':'blocked'} · Attribution: ${_aiPol.attributionRequired?'required':'—'}</div></div></div>`;
+if(_attr.academicLineage)h+=`<div style="padding:.65rem 1rem;background:var(--bg);border-radius:6px;font-size:.75rem;color:var(--txt2);margin-bottom:1rem">📚 ${_attr.academicLineage}</div>`;
+const _fair=_ss.fair||{},_care=_ss.care||{};
+h+='<div style="display:flex;flex-wrap:wrap;gap:.35rem">';
+['findable','accessible','interoperable','reusable'].forEach(p=>{if(_fair[p])h+=`<span style="background:var(--p);color:#fff;padding:.15rem .45rem;border-radius:4px;font-size:.7rem;font-weight:600">${p[0].toUpperCase()+p.slice(1)}</span>`;});
+if(_care.collectiveBenefit)h+='<span style="background:var(--succ);color:#fff;padding:.15rem .45rem;border-radius:4px;font-size:.7rem;font-weight:600">Collective Benefit</span>';
+if(_care.ethics)h+=`<span style="background:var(--info,#3b82f6);color:#fff;padding:.15rem .45rem;border-radius:4px;font-size:.7rem;font-weight:600">${_care.ethics}</span>`;
+h+='</div></div>';
 
 document.getElementById('exp-body').innerHTML=h;
 
@@ -13366,13 +13710,13 @@ ${inv.num} · ${sym}${this.fmt(inv.total)} · ${inv.custName||''}
 <div style="font-size:2rem;margin-bottom:.5rem">📄</div>
 <div style="font-weight:600;margin-bottom:.375rem">Export File</div>
 <div style="font-size:.8rem;color:var(--txt2);margin-bottom:1rem">Share via WhatsApp, email, USB, AirDrop</div>
-<button class="btn" onclick="BOS._v2vExportFile(${invId})">⬇️ Download .bib-inv</button>
+<button class="btn" onclick="BOS._v2vExportFile('${invId}')">⬇️ Download .bib-inv</button>
 </div>
 <div style="background:var(--bg);border-radius:8px;padding:1.25rem;text-align:center">
 <div style="font-size:2rem;margin-bottom:.5rem">📱</div>
 <div style="font-weight:600;margin-bottom:.375rem">QR Code</div>
 <div style="font-size:.8rem;color:var(--txt2);margin-bottom:1rem">Receiver scans with their device camera</div>
-<button class="btn" onclick="BOS._v2vShowQR(${invId})">📱 Show QR</button>
+<button class="btn" onclick="BOS._v2vShowQR('${invId}')">📱 Show QR</button>
 </div></div>
 <div style="background:var(--bg);border-radius:8px;padding:1.25rem;margin-bottom:.5rem">
 <div style="display:flex;align-items:center;gap:.75rem">
@@ -13381,7 +13725,7 @@ ${inv.num} · ${sym}${this.fmt(inv.total)} · ${inv.custName||''}
 <div style="font-weight:600;font-size:.9rem">Broadcast on LAN</div>
 <div style="font-size:.8rem;color:var(--txt2)">Push to all vessels listening on this network</div>
 </div>
-<button class="btn btn-sec" style="margin-left:auto" onclick="BOS._v2vBroadcast(${invId})">📡 Broadcast</button>
+<button class="btn btn-sec" style="margin-left:auto" onclick="BOS._v2vBroadcast('${invId}')">📡 Broadcast</button>
 </div></div>`;
 this.alert(h);
 }
@@ -14716,12 +15060,12 @@ this.log('success','System log exported');
       }
       h += `</div>`;
       h += `<div style="display:flex;flex-direction:column;gap:.375rem;flex-shrink:0">`;
-      if(canApprove) h += `<button class="btn btn-sec" style="font-size:.75rem;padding:.25rem .75rem" onclick="BOS.approveIntention(${i})">✅ Approve</button>`;
-      if(canIssue)   h += `<button class="btn" style="font-size:.75rem;padding:.25rem .75rem;background:var(--p)" onclick="BOS.issueVessel(${i})">⬡ Issue Vessel</button>`;
-      if(canReview)  h += `<button class="btn" style="font-size:.75rem;padding:.25rem .75rem;background:var(--amber);color:#000" onclick="BOS.reviewPlanSnapshot(${i})">◎ Review Plan</button>`;
-      if(canReview)  h += `<button class="btn btn-sec" style="font-size:.75rem;padding:.25rem .75rem" onclick="BOS.approvePlan(${i})">✅ Approve Plan</button><button class="btn btn-sec" style="font-size:.75rem;padding:.25rem .75rem;color:var(--red,#f87171);border-color:var(--red,#f87171)" onclick="BOS.requestRevision(${i})">↩ Revision</button>`;
-      h += `<button class="btn btn-sec" style="font-size:.75rem;padding:.25rem .75rem" onclick="BOS.editIntention(${i})">✎ Edit</button>`;
-      h += `<button class="btn btn-dang" style="font-size:.75rem;padding:.25rem .75rem" onclick="BOS.deleteIntention(${i})">✕</button>`;
+      if(canApprove) h += `<button class="btn btn-sec" style="font-size:.75rem;padding:.25rem .75rem" onclick="BOS.approveIntention('${i}')">✅ Approve</button>`;
+      if(canIssue)   h += `<button class="btn" style="font-size:.75rem;padding:.25rem .75rem;background:var(--p)" onclick="BOS.issueVessel('${i}')">⬡ Issue Vessel</button>`;
+      if(canReview)  h += `<button class="btn" style="font-size:.75rem;padding:.25rem .75rem;background:var(--amber);color:#000" onclick="BOS.reviewPlanSnapshot('${i}')">◎ Review Plan</button>`;
+      if(canReview)  h += `<button class="btn btn-sec" style="font-size:.75rem;padding:.25rem .75rem" onclick="BOS.approvePlan('${i}')">✅ Approve Plan</button><button class="btn btn-sec" style="font-size:.75rem;padding:.25rem .75rem;color:var(--red,#f87171);border-color:var(--red,#f87171)" onclick="BOS.requestRevision('${i}')">↩ Revision</button>`;
+      h += `<button class="btn btn-sec" style="font-size:.75rem;padding:.25rem .75rem" onclick="BOS.editIntention('${i}')">✎ Edit</button>`;
+      h += `<button class="btn btn-dang" style="font-size:.75rem;padding:.25rem .75rem" onclick="BOS.deleteIntention('${i}')">✕</button>`;
       h += `</div>`;
       h += `</div>`;
       h += `</div>`;
@@ -14774,7 +15118,7 @@ this.log('success','System log exported');
   static editIntention(i){
     const intent = (this.intentions||[])[i];
     if(!intent) return;
-    this.alert(`<div><h4 style="margin-bottom:1rem">✎ Edit Intention</h4>${this._intentionForm(intent)}<div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem"><button class="btn btn-sec" onclick="document.getElementById('alert-modal').classList.remove('show')">Cancel</button><button class="btn" onclick="BOS._saveIntentionFromForm(${i})">Update Intention</button></div></div>`);
+    this.alert(`<div><h4 style="margin-bottom:1rem">✎ Edit Intention</h4>${this._intentionForm(intent)}<div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem"><button class="btn btn-sec" onclick="document.getElementById('alert-modal').classList.remove('show')">Cancel</button><button class="btn" onclick="BOS._saveIntentionFromForm('${i}')">Update Intention</button></div></div>`);
   }
 
   static _saveIntentionFromForm(i){
@@ -14893,7 +15237,7 @@ this.log('success','System log exported');
         <input type="file" id="snap-file-input" accept=".json" style="margin-bottom:.75rem">
         <div style="display:flex;gap:.5rem;justify-content:flex-end">
           <button class="btn btn-sec" onclick="document.getElementById('alert-modal').classList.remove('show')">Cancel</button>
-          <button class="btn" onclick="BOS._importPlanSnapshot(${i})">Import File</button>
+          <button class="btn" onclick="BOS._importPlanSnapshot('${i}')">Import File</button>
         </div>
       </div>`);
       return;
@@ -14997,7 +15341,7 @@ this.log('success','System log exported');
         <button class="btn btn-sec"
           onclick="document.getElementById('alert-modal').classList.remove('show')">Cancel</button>
         <button class="btn" style="background:var(--red,#f87171);color:#000"
-          onclick="BOS._executeRequestRevision(${i})">↩ Send Request</button>
+          onclick="BOS._executeRequestRevision('${i}')">↩ Send Request</button>
       </div>
     </div>`);
   }
