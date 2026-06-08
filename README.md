@@ -2,7 +2,7 @@
 > **v7.2e** · Sovereign Vessel · Zero Dependencies · Offline-First · 96/100 Sovereignty Score
 
 ![Sovereignty Score](https://img.shields.io/badge/Sovereignty-96%2F100-gold?style=flat-square)
-[![Size](https://img.shields.io/badge/Size-2MB-green?style=flat-square)]()
+[![Size](https://img.shields.io/badge/Size-2.1MB-green?style=flat-square)]()
 [![Dependencies](https://img.shields.io/badge/Dependencies-Zero-brightgreen?style=flat-square)]()
 [![License](https://img.shields.io/badge/License-Sovereign-gold?style=flat-square)]()
 [![Formation](https://img.shields.io/badge/Formation-Cross--Device%20Live-blue?style=flat-square)]()
@@ -12,6 +12,8 @@
 
 Your complete business operating system in a single HTML file.  
 No server. No subscription. No permission required. Open it in any browser — it works offline, on any device, forever.
+
+> **GitHub note:** BiBBOS does not render in GitHub's preview because it is not a webpage — it is a sovereign instrument. The 2.1MB file exceeds GitHub's render limit by design. Download it. Open it locally. Everything it needs is already inside. A file that requires no server, no CDN, and no dependency after download is the proof of the thesis — not a limitation of it.
 
 ---
 
@@ -223,6 +225,50 @@ Every vessel commissioned carries a `sovereignStandard` block in its `vesselGene
 ```
 
 FAIR and CARE are not applied policies — they are structural properties of every vessel, enforced at the file level, inseparable from the data.
+
+---
+
+## Sovereign Vessel Hotel — Sample Import
+
+A pre-populated demonstration vessel designed to express maximum formation signals across all domains simultaneously. Import it to see what continuous visibility looks like when every instrument is reading.
+
+**File:** `sovereign-vessel-hotel.json`
+
+### What the sample expresses
+
+| Domain | Signal |
+|---|---|
+| **Company** | 1 intention awaiting approval · No reg |
+| **Sales** | 1 overdue invoice (INV-2026-001 · 28d) · $13,140 open AR |
+| **Reports** | Open AR visible in real time — matches bar PENDING |
+| **Assets** | 1 critical work order — Pool pump bearing replacement |
+| **Accounting** | 35 accounts · balanced · 17 journal entries |
+| **Inventory** | 15 products across 6 categories |
+| **Intelligence** | No models trained — vessel data ready (train on import) |
+| **Maintenance** | Backup 3 days ago · condition active |
+| **HR** | 8 employees · all active |
+| **Intention Thread** | 3 active · 1 pending approval · 1 approved |
+| **Vault** | 8 documents pre-loaded |
+| **Reservations** | 1 checked-in · 2 confirmed · 1 provisional |
+| **Marketing** | 2 active campaigns |
+| **Delivery** | 1 in-transit |
+
+### Formation View on import
+
+The steward who opens Formation View immediately after import sees:
+- **Operations:** Accounting ALERT (overdraft condition from loan structure)
+- **Resources:** Assets showing 1 critical WO · Sales showing open AR
+- **Sovereign Layer:** Intelligence untrained — vessel data ready
+- **Infrastructure:** Maintenance backup 3d ago · 2.1MB / 10MB
+
+The sample is designed so that every Formation tile carries a meaningful signal. Nothing is empty. Nothing is zero. The vessel is alive from the first open.
+
+### Import instructions
+1. Download `sovereign-vessel-hotel.json`
+2. Open BiBBOS
+3. Commission a new vessel (or use existing)
+4. Maintenance → Import Vessel → select the JSON file
+5. Open Formation View — all 22 domains will be reading
 
 ---
 
