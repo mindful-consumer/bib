@@ -1377,6 +1377,7 @@ Contributions are processed securely via Stripe. Each is recorded in your vessel
 <button class="btn btn-sec" style="padding:.25rem .5rem;font-size:.75rem" onclick="BOS._logAnalytics()">📊 Analytics</button>
 <button class="btn btn-sec" style="padding:.25rem .5rem;font-size:.75rem" onclick="BOS._sovereignReflection()">🪞 Reflect</button>
 <button class="btn btn-sec" style="padding:.25rem .5rem;font-size:.75rem" onclick="BOS.exportLog()">📄 TXT</button>
+<button class="btn btn-sec" style="padding:.25rem .5rem;font-size:.75rem" onclick="BOS.open('readme')">⚓ About</button>
 <button class="btn" style="padding:.25rem .5rem;font-size:.75rem" onclick="BOS.toggleLog()">✕</button>
 </div>
 </div>
@@ -3359,7 +3360,25 @@ if(openAR>0&&cashBal>0&&openAR/cashBal>(_ct.floatRatio||1.5))alerts.push({
       _cd.title=alerts.filter(a=>a.action===id).map(a=>a.msg).join(' · ');
     }
   });
-    // ── Observation prompts — conditions unseen by steward ────────────────
+    // ── Data integrity conditions — orphaned records ──────────────────────
+  try{
+    const _orphInv=(this.inv||[]).filter(i=>i.cid&&!(this.people||[]).find(p=>p.id===i.cid)).length;
+    const _orphPO=(this.po||[]).filter(p=>p.vid&&!(this.people||[]).find(x=>x.id===p.vid)).length;
+    const _orphTotal=_orphInv+_orphPO;
+    if(_orphTotal>0){
+      alerts.push({
+        level:'warn',
+        icon:'🔗',
+        msg:_orphTotal+' orphaned record'+(_orphTotal!==1?'s':'')+' — '
+          +(_orphInv?_orphInv+' invoice'+(_orphInv!==1?'s':''):'')
+          +(_orphInv&&_orphPO?' + ':'')
+          +(_orphPO?_orphPO+' PO'+(_orphPO!==1?'s':'')+' reference deleted contacts':' reference deleted contacts'),
+        action:'maint'
+      });
+    }
+  }catch(_oe){}
+
+  // ── Observation prompts — conditions unseen by steward ────────────────
   const _obs=this.cfg._obsLog||{};
   const _obsNow=Date.now();
   const _obsThresh=3*864e5; // 3 days
@@ -4216,6 +4235,7 @@ else if(c==='hr')this.rHR();
 else if(c==='formation'){this.rFormation();return;}
 else if(c==='intentionthread'){this._rIntentionThread();return;}
 else if(c==='reflect'){this._sovereignReflection();return;}
+else if(c==='readme'){this._rReadme();return;}
 else if(c==='reports')this.rReports();
 else if(c==='delivery')this.rDelivery();
 else if(c==='marketing')this.rMarketing();
@@ -5198,6 +5218,7 @@ this.confirm('<div>'+
   i._payments.push({date:today,amount,method,ref});
   i._amountPaid=parseFloat(((i._amountPaid||0)+amount).toFixed(2));
   const isFullyPaid=i._amountPaid>=i.total-0.005;
+  const _wasDraft=i.status==='draft';
   if(isFullyPaid){
     i.status='paid';i.paidAt=today;
     if(this.accountingMode){
@@ -5215,8 +5236,11 @@ this.confirm('<div>'+
                   description:(_accrual?'AR cleared':'Revenue received')+' — '+i.num}]});
       }
     }
+    if(_wasDraft)this.log('info','Invoice '+i.num+' — posted directly from draft to paid (full payment)');
     this.log('success','Invoice '+i.num+' fully paid ('+sym+this.fmt(amount)+' via '+method+')');
   } else {
+    // Partial payment — promote draft to sent for steward visibility
+    if(i.status==='draft'){i.status='sent';this.log('info','Invoice '+i.num+' — draft → sent (partial payment: '+sym+this.fmt(i._amountPaid||0)+' of '+sym+this.fmt(i.total)+' received)');}
     if(this.accountingMode){
       const cashAcct=method==='cheque'?'1050':'1000';
       const _accrual=(this.cfg.accountingMode==='accrual');
@@ -19040,7 +19064,10 @@ static rFormation(){
        return (this.cfg.vesselType||'business')+' · '+_reg;
      }},
     {key:'people',   icon:'👥',label:'Contacts',    group:'core',
-     stat:()=>(this.people||[]).filter(p=>p.type!=='vendor').length+' cust · '+(this.people||[]).filter(p=>p.type==='vendor').length+' vend',cond:''},
+     stat:()=>{const _c=(this.people||[]).filter(p=>p.type!=='vendor').length;
+       const _v=(this.people||[]).filter(p=>p.type==='vendor').length;
+       const _newThis=(this.people||[]).filter(p=>p.createdAt&&p.createdAt>=new Date(Date.now()-30*864e5).toISOString().split('T')[0]).length;
+       return _c+' cust · '+_v+' vend'+(_newThis?' · '+_newThis+' new':'');},cond:''},
     {key:'inventory',icon:'📦',label:'Inventory',   group:'core',
      stat:()=>{const _low=(this.prod||[]).filter(p=>(p.qty||0)<=(p.reorder||0)&&p.reorder>0).length;
        return (this.prod||[]).length+' products'+(_low?' · '+_low+' low':' · stocked');},cond:'inventory'},
@@ -19066,19 +19093,31 @@ static rFormation(){
        return (this.employees||[]).length+' emp · '+_act+' active';}},
     {key:'assets',   icon:'⚙', label:'Assets',     group:'resources',
      stat:()=>{const _wo=(this.workOrders||[]).filter(w=>w.status==='open'||w.status==='pending').length;
-       return (this.assets||[]).length+' assets'+(_wo?' · '+_wo+' WOs':'');}},
+       const _crit=(this.workOrders||[]).filter(w=>w.priority==='critical'&&w.status!=='closed').length;
+       const _a=(this.assets||[]).length;
+       if(_crit>0)return _a+' assets · '+_crit+' critical WO'+(_crit!==1?'s':'');
+       return _a+' assets'+(_wo?' · '+_wo+' open WO'+(_wo!==1?'s':''):'  · no open WOs');}},
     {key:'delivery', icon:'🚚',label:'Delivery',    group:'resources',
      stat:()=>{const _int=(this.deliveries||[]).filter(d=>d.status==='in-transit').length;
        return (this.deliveries||[]).length+' orders'+(_int?' · '+_int+' in transit':' · none in transit');}},
     // Intelligence
     {key:'dash',     icon:'📊',label:'Dashboard',   group:'intel',
-     stat:()=>{const _sym=this.cfg.sym||'$';
+     stat:()=>{
+       const _sym=this.cfg.sym||'$';
        const _rev=(this.inv||[]).filter(i=>i.status==='paid').reduce((s,i)=>s+(i.total||0),0);
-       return _rev>0?_sym+this._fmtBar(_rev)+' revenue':'No revenue yet';}},
+       const _lastSave=this.cfg._lastSaved;
+       const _saveTxt=_lastSave?new Date(_lastSave).toLocaleDateString(undefined,{month:'short',day:'numeric'}):'';
+       const _revTxt=_rev>0?_sym+this._fmtBar(_rev)+' revenue':'No revenue yet';
+       return _saveTxt?_revTxt+' · saved '+_saveTxt:_revTxt;
+     }},
     {key:'intel',    icon:'🧠',label:'Intelligence',group:'intel',
      stat:()=>{const _m=Object.keys(this._vaiModels||{}).length;
        const _anom=(this._vaiModels||{}).anomaly;
-       return _m+' model'+(_m!==1?'s':'')+' trained'+(_anom?' · anomaly ready':'');}},
+       const _lt=this.cfg._lastTrained;
+       const _ltd=_lt?Math.round((Date.now()-_lt)/864e5):null;
+       const _ltTxt=_ltd===null?'':_ltd===0?' · trained today':_ltd===1?' · trained yesterday':' · trained '+_ltd+'d ago';
+       if(_m===0)return 'No models trained — vessel data ready';
+       return _m+' model'+(_m!==1?'s':'')+(_anom?' · anomaly ready':'')+_ltTxt;}},
     {key:'reports',  icon:'📋',label:'Reports',     group:'intel',
      stat:()=>{const _sym=this.cfg.sym||'$';
        const _arS2=['sent','delivered','buyer-confirmed','cheque-received','clearing','overdue'];
@@ -19090,9 +19129,14 @@ static rFormation(){
          (_od2?_od2+' overdue · '+_sym+this._fmtBar(_openAmt2)+' AR':
           _sym+this._fmtBar(_openAmt2)+' open AR'):'AR clear';}},
     {key:'pricing',  icon:'💲',label:'Pricing',     group:'intel',
-     stat:()=>{const _p=(this.prod||[]).filter(p=>p.price&&p.cost&&p.price>p.cost);
-       const _avg=_p.length?Math.round(_p.reduce((s,p)=>s+(p.price-p.cost)/p.price*100,0)/_p.length):0;
-       return _avg>0?'Avg margin '+_avg+'%':'No margin data';}},
+     stat:()=>{
+       const _all=(this.prod||[]).filter(p=>p.price&&p.cost);
+       const _above=_all.filter(p=>p.price>p.cost);
+       const _below=_all.filter(p=>p.price<=p.cost).length;
+       const _avg=_above.length?Math.round(_above.reduce((s,p)=>s+(p.price-p.cost)/p.price*100,0)/_above.length):0;
+       if(_below>0)return 'Avg margin '+_avg+'% · '+_below+' below floor';
+       return _avg>0?'Avg margin '+_avg+'%':'No pricing data';
+     }},
     {key:'marketing',icon:'📣',label:'Marketing',   group:'intel',
      stat:()=>{const _act=(this.campaigns||[]).filter(c=>c.status==='active').length;
        return (this.campaigns||[]).length+' campaigns'+(_act?' · '+_act+' active':' · none active');}},
@@ -19103,23 +19147,70 @@ static rFormation(){
      stat:()=>{const _m=Object.keys(this._vaiModels||{}).length;
        return _m+' model'+(_m!==1?'s':'')+(_m?' trained':' · untrained');}},
     {key:'fleet',    icon:'⬡', label:'Fleet',       group:'sovereign',
-     stat:()=>{const _r=VesselManager.getRegistry?VesselManager.getRegistry().length:0;
-       return _r+' vessel'+(_r!==1?'s':'')+' in formation';}},
+     stat:()=>{
+       try{
+         const _reg=VesselManager.getRegistry?VesselManager.getRegistry():[];
+         if(!_reg||_reg.length===0)return 'Formation ready';
+         const _cur=VesselManager.currentVesselId;
+         const _others=_reg.filter(v=>v.id!==_cur);
+         const _names=_others.map(v=>v.name||'Vessel').slice(0,2);
+         if(_others.length===0)return 'Solo vessel · no peers';
+         return _others.length+' peer'+(_others.length!==1?'s':'')+': '+_names.join(', ')+(_others.length>2?'…':'');
+       }catch(e){return 'Formation ready';}
+     }},
     {key:'mesh',     icon:'⬡⬡',label:'Mesh',        group:'sovereign',
-     stat:()=>{const _p=document.getElementById('mesh-status');
-       return _p?_p.textContent:'P2P network';}},
+     stat:()=>{
+       const _p=document.getElementById('mesh-status');
+       const _raw=_p?_p.textContent.trim():'';
+       if(!_raw||_raw==='Offline')return 'P2P · Offline';
+       // Parse peer count from mesh-status text like '3 peers · 3 BC'
+       const _peerM=_raw.match(/(\d+)\s*peer/);
+       const _peers=_peerM?parseInt(_peerM[1]):0;
+       if(_peers>0)return _peers+' peer'+(_peers!==1?'s':'')+' connected';
+       return 'P2P · '+(_raw.includes('Listen')?'Listening':'Active');
+     }},
     {key:'know',     icon:'📖',label:'Knowledge',   group:'sovereign',
-     stat:()=>(this.slides||[]).length+' slides · learning guide'},
+     stat:()=>{
+       const _total=(this.slides||[]).length||78;
+       const _last=this.currentSlide||0;
+       const _pct=Math.round((_last+1)/_total*100);
+       if(_last===0)return _total+' slides · not started';
+       return _total+' slides · slide '+(_last+1)+' ('+_pct+'%)';
+     }},
     // Infrastructure
     {key:'formation',icon:'🔭',label:'Formation',    group:'infra',
      stat:()=>_domains.length+' domains · '+(_condCount?_condCount+(_condCount!==1?' conditions':' condition'):'all clear')},
     {key:'maint',    icon:'🔧',label:'Maintenance', group:'infra',
-     stat:()=>{const _bu=this.cfg.lastBackup?Math.round((Date.now()-new Date(this.cfg.lastBackup).getTime())/864e5):99;
-       return _bu===0?'Backed up today':_bu===1?'Backed up yesterday':'Last backup '+(_bu>99?'99+':_bu)+'d ago';},cond:'maint'},
+     stat:()=>{
+       const _bu=this.cfg.lastBackup?Math.round((Date.now()-new Date(this.cfg.lastBackup).getTime())/864e5):99;
+       const _buTxt=_bu===0?'Backed up today':_bu===1?'Backed up yesterday':'Last backup '+(_bu>99?'99+':_bu)+'d ago';
+       // Storage usage
+       let _kb=0;try{Object.keys(localStorage).forEach(k=>{_kb+=(localStorage.getItem(k)||'').length;});}catch(e){}
+       const _mb=(_kb/1024/1024).toFixed(1);
+       const _pct=Math.round(_kb/1024/10.24); // % of 10MB quota
+       const _storTxt=_mb+'MB/10MB ('+_pct+'%)';
+       // Orphan count
+       const _orp=(this.inv||[]).filter(i=>i.cid&&!(this.people||[]).find(p=>p.id===i.cid)).length;
+       return _buTxt+' · '+_storTxt+(_orp?' · '+_orp+' orphan'+(_orp!==1?'s':''):'');
+     },cond:'maint'},
     {key:'docvault', icon:'📁',label:'Vault',       group:'infra',
-     stat:()=>(this.docs||[]).length+' doc'+((this.docs||[]).length!==1?'s':'')+' · PDF registry'},
+     stat:()=>{
+       const _d=(this.docs||[]);
+       const _n=_d.length;
+       if(_n===0)return 'No documents yet';
+       const _last=_d[_n-1];
+       const _lastType=_last?(_last.type||_last.docType||'Document').replace('pdf','PDF').replace('_',' '):'';
+       return _n+' doc'+(_n!==1?'s':'')+(_lastType?' · last: '+_lastType:'');
+     }},
     {key:'capsules', icon:'◈', label:'Capsules',    group:'infra',
-     stat:()=>'Sovereign modules'},
+     stat:()=>{
+       try{
+         const _ch=BroadcastChannel?new BroadcastChannel('bibbos_capsule_channel'):null;
+         if(_ch){_ch.close();}
+       }catch(e){}
+       const _c=Object.keys(this.cfg._capsuleRegistry||{}).length;
+       return _c>0?_c+' capsule'+(_c!==1?'s':'')+' active':'No capsules linked';
+     }},
   ];
   const _groups={
     core:     {label:'Operations',       color:'var(--p)'},
@@ -19132,7 +19223,7 @@ static rFormation(){
 
   // Build as DOM — avoids all HTML string escaping issues
   const expBody=document.getElementById('exp-body');
-  document.getElementById('exp-title').textContent='Formation View';
+  (()=>{const _t=document.getElementById('exp-title');if(_t){_t.innerHTML=(BOS._navStack&&BOS._navStack.length>1?'<button onclick="BOS.back()" style="background:none;border:none;cursor:pointer;font-size:1rem;color:var(--p);padding:0 .5rem 0 0">← Back</button>':'')+'🔭 Formation View';}})();
   expBody.style.overflow='hidden';
   expBody.style.padding='.75rem';
 
@@ -22401,7 +22492,17 @@ return orphans;
 }
 
 static cleanupOrphans(){
-this.confirm('Clean up orphaned records? This will remove references to deleted entities but preserve the financial records for audit purposes.',()=>{
+// Build list of affected records for steward visibility before cleanup
+const _affInv=this.inv.filter(inv=>inv.cid&&!this.people.find(p=>p.id===inv.cid));
+const _affPO=this.po.filter(po=>po.vid&&!this.people.find(p=>p.id===po.vid));
+const _affItems=[];
+this.inv.forEach(inv=>{if(inv.items)inv.items.forEach(item=>{if(item.pid&&!this.prod.find(p=>p.id===item.pid))_affItems.push({inv:inv.num,item:item.desc});});});
+let _detail='The following records will have their deleted references cleared (financial data preserved):\n\n';
+if(_affInv.length)_detail+='Invoices ('+_affInv.length+'): '+_affInv.map(i=>i.num+' — '+(i.custName||'unknown')).join(', ')+'\n\n';
+if(_affPO.length)_detail+='Purchase Orders ('+_affPO.length+'): '+_affPO.map(p=>p.num||p.id).join(', ')+'\n\n';
+if(_affItems.length)_detail+='Line items ('+_affItems.length+') with deleted products\n\n';
+_detail+='Cleanup will replace deleted references with [Deleted Customer] / [Deleted Vendor] labels.\nThis cannot be undone. Export a backup first.';
+this.confirm(_detail,()=>{
 let fixed=0;
 // Fix invoices: remove customer reference but keep invoice
 this.inv.forEach(inv=>{
@@ -22730,6 +22831,93 @@ static _sovereignReflection(){
   this._navStack.push('reflect');
   this.cur='reflect';
   this.log('info','Sovereign reflection viewed');
+}
+
+static _rReadme(){
+  const _v=this.v||'7.2';
+  const _name=this.cfg.name||'Vessel';
+  const _sym=this.cfg.sym||'$';
+  const _vessels=Object.keys(VesselManager.vessels||{}).length;
+  const _docs=(this.docs||[]).length;
+  const _emp=(this.employees||[]).length;
+  const _prod=(this.prod||[]).length;
+  const _inv=(this.inv||[]).length;
+  const _je=(this.journalEntries||[]).length;
+  const _intents=(this.intentions||[]).length;
+  const _alerts=(this._watchConditions()||[]).filter(a=>a.level!=='prompt').length;
+  const _score=96;
+  const titleEl=document.getElementById('exp-title');
+  if(titleEl)titleEl.innerHTML=(this._navStack&&this._navStack.length>1?
+    '<button onclick="BOS.back()" style="background:none;border:none;cursor:pointer;font-size:1rem;color:var(--p);padding:0 .5rem 0 0">← Back</button>':'')+
+    '⚓ About This Vessel';
+  const body=document.getElementById('exp-body');
+  if(!body)return;
+  body.innerHTML=`
+  <div style="padding:1rem;max-width:820px;margin:0 auto">
+    <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.25rem;flex-wrap:wrap">
+      <div style="font-size:2.5rem">⚓</div>
+      <div>
+        <div style="font-size:1.3rem;font-weight:800;color:var(--p)">BiBBOS v${_v}</div>
+        <div style="font-size:.8rem;color:var(--txt2)">Business in a Box Operating System · Sovereign Vessel</div>
+        <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.4rem">
+          <span style="background:rgba(255,215,0,.12);border:1px solid rgba(255,215,0,.3);color:#ffd700;border-radius:12px;padding:.15rem .6rem;font-size:.65rem;font-weight:700">${_score}/100 Sovereignty</span>
+          <span style="background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.3);color:var(--succ);border-radius:12px;padding:.15rem .6rem;font-size:.65rem">Zero Dependencies</span>
+          <span style="background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.3);color:var(--info);border-radius:12px;padding:.15rem .6rem;font-size:.65rem">Offline-First</span>
+          <span style="background:rgba(233,69,96,.1);border:1px solid rgba(233,69,96,.3);color:var(--p);border-radius:12px;padding:.15rem .6rem;font-size:.65rem">${_alerts>0?_alerts+' condition'+(_alerts!==1?'s':''):'All clear'}</span>
+        </div>
+      </div>
+    </div>
+    <div style="background:var(--bg);border-radius:10px;padding:.75rem 1rem;margin-bottom:1rem;font-size:.82rem;color:var(--txt2);line-height:1.7;border:1px solid var(--bord)">
+      Your complete business operating system in a single HTML file. Every customer, invoice, product, employee, journal entry, and project intention lives on your device — not on a server you do not control.<br>
+      <span style="color:var(--txt);font-style:italic">The vessel is the record. There is no reconciliation because there was never a separation between the operation and the data.</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:.6rem;margin-bottom:1rem">
+      ${[
+        ['📦','Products',_prod+' items'],
+        ['🧾','Invoices',_inv+' records'],
+        ['📚','Journal Entries',_je+' entries'],
+        ['👷','Employees',_emp+' people'],
+        ['💡','Intentions',_intents+' active'],
+        ['📁','Vault',_docs+' documents'],
+        ['⚓','Vessels',_vessels+' commissioned'],
+      ].map(([icon,label,val])=>`
+        <div style="background:var(--card);border:1px solid var(--bord);border-radius:8px;padding:.6rem;text-align:center">
+          <div style="font-size:1.4rem">${icon}</div>
+          <div style="font-size:.65rem;color:var(--txt2);margin:.15rem 0">${label}</div>
+          <div style="font-size:.85rem;font-weight:700">${val}</div>
+        </div>`).join('')}
+    </div>
+    <div style="font-size:.75rem;font-weight:700;color:var(--txt2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.5rem">Six Stewardship Cultivation Environments</div>
+    <div style="display:flex;flex-direction:column;gap:.3rem;margin-bottom:1rem">
+      ${[
+        ['1','Condition Age','How long has this condition been present'],
+        ['2','Metric Trajectory','Which direction is this condition moving'],
+        ['3','Formation View','The whole vessel visible simultaneously'],
+        ['4','Observation Prompts','What you have not looked at recently'],
+        ['5','Intention-Action Visibility','What you said vs what the vessel records'],
+        ['6','Sovereign Reflection','Your session held up as a mirror'],
+      ].map(([n,label,desc])=>`
+        <div style="display:flex;align-items:center;gap:.75rem;padding:.5rem .75rem;background:var(--card);border:1px solid var(--bord);border-radius:8px">
+          <div style="width:1.4rem;height:1.4rem;border-radius:50%;background:var(--p);color:#fff;display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:700;flex-shrink:0">${n}</div>
+          <div><div style="font-size:.78rem;font-weight:600">${label}</div><div style="font-size:.68rem;color:var(--txt2)">${desc}</div></div>
+        </div>`).join('')}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin-bottom:1rem">
+      <div style="background:var(--card);border:1px solid var(--bord);border-radius:8px;padding:.75rem">
+        <div style="font-size:.65rem;color:var(--txt2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.5rem">Built By</div>
+        <div style="font-size:.75rem;line-height:1.7">One human steward<br>Port of Spain, Trinidad &amp; Tobago<br>February–June 2026</div>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--bord);border-radius:8px;padding:.75rem">
+        <div style="font-size:.65rem;color:var(--txt2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.5rem">AI Federation</div>
+        <div style="font-size:.72rem;line-height:1.8;color:var(--txt2)">Claude (Anthropic) · Primary<br>Gemini · Grok · DeepSeek · ChatGPT</div>
+      </div>
+    </div>
+    <div style="background:rgba(255,215,0,.05);border:1px solid rgba(255,215,0,.2);border-radius:8px;padding:.75rem;font-size:.75rem;color:var(--txt2);font-style:italic;text-align:center">
+      "The pattern is free. The sovereignty is yours. Forever."<br>
+      <span style="color:var(--txt);font-size:.68rem">Sovereign License · Use freely, attribute honestly</span>
+    </div>
+  </div>`;
+  this.log('info','Viewed vessel README');
 }
 
 static toggleLog(){document.getElementById('log').classList.toggle('show');}
