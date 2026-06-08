@@ -1338,10 +1338,12 @@ class FormationTransport {
   postMessage(obj) {
     if (this._closed) return;
 
-    // One-shot messages must never enter the offline queue — replaying a
-    // departure on reconnect would falsely evict an already-reconnected vessel.
+    // One-shot messages (departures) must never enter the offline queue.
+    // If WS is down when a departure fires, send via BC (same-browser) only.
+    // Replaying a departure on reconnect would falsely evict a vessel that
+    // has already reconnected and is heartbeating normally.
     var isOneShot = (obj._type === 'bibbos_formation_departure' ||
-                     obj._type === 'spm_project_closed');
+                     obj._type === 'bibbos_formation_departure');
 
     // Single send path — WS if connected, BC otherwise. Never both.
     if (this._ws && this._ws.readyState === WebSocket.OPEN) {
@@ -1352,7 +1354,9 @@ class FormationTransport {
       try { this._bc.postMessage(obj); return; } catch (e) {}
     }
 
-    // Neither WS nor BC — queue for sync burst on reconnect (heartbeats only)
+    // Neither WS nor BC — queue for sync burst on reconnect.
+    // Departure messages are dropped here: the hub's grace period handles
+    // vessel eviction when the WS closes, making a replayed departure redundant.
     if (!isOneShot) {
       this._queueOffline(obj);
     }
@@ -1657,32 +1661,35 @@ function formationBroadcast(obj, excludeCid) {
 const pendingDirectives = [];
 const MAX_DIRECTIVES = 5;
 
-// Latest bibbos_intention_status per entity vesselId + spm_plan_submitted per SPM vessel
-// Replayed to reconnecting vessels so approval/revision/submission events are never lost
-const latestIntentionStatus = new Map(); // key → { msg, _storedAt }
+// Store last N bibbos_intention_status pushes for reconnecting SPM vessels.
+// When SPM reconnects after a disconnect (browser refresh, tab restore), it 
+// misses any intention signals (approve/revision/issue) that fired while it was gone.
+// Replaying the last 10 on snapshot delivery covers the reconnect gap.
+const pendingIntentionStatuses = [];
+const MAX_INTENTION_STATUSES = 10;
 
 function buildFormationSnapshot() {
   const vessels = [];
   formationRegistry.forEach((s, vid) => {
     if (s._departureTimer) return;
+    // Clone only — never mutate registry entry
     const entry = Object.assign({}, s);
     delete entry._departureTimer;
     vessels.push(entry);
   });
-  // Latest intention status events per BiBBOS entity — replayed to reconnecting SPM
-  const recentIntentionStatuses = [];
-  latestIntentionStatus.forEach((msg) => {
-    if (Date.now() - (msg._storedAt||0) < 86400000) {
-      const entry = Object.assign({}, msg);
-      delete entry._storedAt;
-      recentIntentionStatuses.push(entry);
-    }
-  });
+  // TTL-filter intention statuses: only replay signals < 10 minutes old.
+  // Older signals are from dead sessions and must not corrupt fresh SPM commissions.
+  const _tenMinAgo = Date.now() - 10 * 60 * 1000;
+  const freshStatuses = pendingIntentionStatuses.filter(s => (s._hubQueuedAt||0) > _tenMinAgo);
   return {
     _type:"formation_snapshot", _hub:true, ts:Date.now(),
     vessels, count:vessels.length,
     recentDirectives: pendingDirectives.slice(),
-    recentIntentionStatuses
+    // Queued intention status events — replayed to SPM vessels that reconnected
+    // after missing an approve/revision/issue signal from BiBBOS.
+    // Only signals < 10 minutes old are included to prevent stale session data
+    // from corrupting a fresh SPM commissioning a different project.
+    recentIntentionStatuses: freshStatuses
   };
 }
 
@@ -1850,12 +1857,18 @@ wssFormation.on("connection", (ws, req) => {
       if (pendingDirectives.length > MAX_DIRECTIVES) pendingDirectives.shift();
     }
 
-    // Store latest intention status events for reconnect replay (24h TTL)
-    if (type === "bibbos_intention_status" && parsed.vesselId && parsed.intention) {
-      latestIntentionStatus.set(parsed.vesselId, Object.assign({}, parsed, { _storedAt: Date.now() }));
-    }
-    if (type === "spm_plan_submitted" && parsed.vesselId) {
-      latestIntentionStatus.set('spm:' + parsed.vesselId, Object.assign({}, parsed, { _storedAt: Date.now() }));
+    // Store bibbos_intention_status for reconnecting SPM vessels
+    // Keyed by intentionId — newer event overwrites older for the same intention
+    if (type === "bibbos_intention_status" && parsed.intention?.id) {
+      const key = parsed.intention.id;
+      const idx = pendingIntentionStatuses.findIndex(s => s.intention?.id === key);
+      const record = Object.assign({}, parsed, { _hubQueued: true, _hubQueuedAt: Date.now() });
+      if (idx >= 0) {
+        pendingIntentionStatuses[idx] = record; // replace stale state for same intention
+      } else {
+        pendingIntentionStatuses.push(record);
+        if (pendingIntentionStatuses.length > MAX_INTENTION_STATUSES) pendingIntentionStatuses.shift();
+      }
     }
 
     // Leak fix 1: registry stores COMPACT record only — never the full heartbeat payload
