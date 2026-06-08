@@ -31,8 +31,29 @@ class FormationTransport {
 
   static autoUrl() {
     if (typeof window === "undefined") return "";
-    var proto = window.location.protocol === "https:" ? "wss" : "ws";
-    return proto + "://" + window.location.hostname + ":8080";
+    var host = window.location.hostname || '';
+    function _isGateway(s){if(!s)return false;
+      return s.includes('.ipfs.')||s.includes('.ipns.')||s.includes('ipfs.io')||
+             (s.length>40&&(s.includes('ipfs')||s.includes('ipns')));}
+    try{
+      var stored=localStorage.getItem('masthead_formation_url')||
+                 localStorage.getItem('bib_formation_server_url')||'';
+      if(stored&&!_isGateway(stored))return stored;
+      if(stored&&_isGateway(stored)){
+        try{localStorage.removeItem('masthead_formation_url');}catch(e){}
+      }
+    }catch(e){}
+    if(_isGateway(host))return '';
+    if(!host||host==='localhost'||host==='127.0.0.1')return '';
+    var proto=window.location.protocol==="https:"?"wss":"ws";
+    return proto+"://"+host+":8080";
+  }
+  static urlContext(){
+    var host=window.location.hostname||'';
+    if(!host)return'file';
+    if(host.includes('.ipfs.')||host.includes('.ipns.')||(host.length>40&&(host.includes('ipfs')||host.includes('ipns'))))return'ipfs';
+    if(host==='localhost'||host==='127.0.0.1')return'localhost';
+    return'lan';
   }
 
   constructor(opts) {
@@ -245,13 +266,31 @@ window.FormationTransport = FormationTransport;
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-:root{
+:root,[data-theme='midnight']{
   --bg:#0B0F1A;--card:#141928;--card2:#1A2035;--bord:#252D45;
   --p:#60A5FA;--pd:#3B82F6;--succ:#10B981;--warn:#F59E0B;--dang:#EF4444;--info:#A78BFA;
   --txt:#E2E8F0;--txt2:#94A3B8;--txt3:#64748B;
   --sh:0 2px 12px rgba(0,0,0,.4);--rad:10px;--mono:'JetBrains Mono',monospace
 }
-body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;display:flex;flex-direction:column}
+[data-theme='sovereign']{
+  --bg:#0D1117;--card:#161B22;--card2:#1C2128;--bord:#30363D;
+  --p:#1D9E75;--pd:#1A8A65;--succ:#1D9E75;--warn:#E3B341;--dang:#F85149;--info:#6E7681;
+  --txt:#C9D1D9;--txt2:#8B949E;--txt3:#484F58;
+  --sh:0 2px 12px rgba(0,0,0,.5);--rad:10px;--mono:'JetBrains Mono',monospace
+}
+[data-theme='light']{
+  --bg:#F8F9FA;--card:#FFFFFF;--card2:#F1F3F5;--bord:#DEE2E6;
+  --p:#2563EB;--pd:#1D4ED8;--succ:#059669;--warn:#D97706;--dang:#DC2626;--info:#7C3AED;
+  --txt:#111827;--txt2:#6B7280;--txt3:#9CA3AF;
+  --sh:0 2px 8px rgba(0,0,0,.08);--rad:10px;--mono:'JetBrains Mono',monospace
+}
+[data-theme='formation']{
+  --bg:#030712;--card:#0F172A;--card2:#1E293B;--bord:#1E3A5F;
+  --p:#38BDF8;--pd:#0EA5E9;--succ:#34D399;--warn:#FCD34D;--dang:#F87171;--info:#A5B4FC;
+  --txt:#F0F9FF;--txt2:#BAE6FD;--txt3:#7DD3FC;
+  --sh:0 2px 16px rgba(0,0,0,.6);--rad:10px;--mono:'JetBrains Mono',monospace
+}
+body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--txt);height:100vh;overflow:hidden;display:flex;flex-direction:column}
 
 /* ── TOP BAR ── */
 .bar{background:var(--card);border-bottom:2px solid var(--bord);padding:.75rem 1.25rem;display:flex;align-items:center;gap:1rem;position:sticky;top:0;z-index:100;box-shadow:var(--sh)}
@@ -317,6 +356,7 @@ body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--txt);min-
 .filter-chip.system.on{background:var(--card2);border-color:var(--txt3)}
 .filter-chip.departure.on{background:var(--dang)}
 .log-scroll{flex:1;overflow-y:auto;padding:.625rem;min-height:0}
+#masthead-theme-menu.show{display:block!important}
 @media(max-width:700px){.log-scroll{max-height:calc(60vh - 110px)}}
 .log-entry{display:grid;grid-template-columns:70px 60px 1fr auto;gap:.5rem;align-items:baseline;padding:.4rem .625rem;border-radius:6px;margin-bottom:2px;font-size:.78rem;transition:background .1s}
 .log-entry:hover{background:var(--card2)}
@@ -391,7 +431,7 @@ body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--txt);min-
 
 <!-- TOP BAR -->
 <div class="bar">
-  <div class="bar-logo">⬡</div>
+  <div class="bar-logo" id="masthead-bar-logo" style="transition:transform .2s,color .2s">⬡</div>
   <div>
     <div class="bar-title">The Masthead</div>
     <div class="bar-sub" id="bar-sub">Formation Oversight · v5.0</div>
@@ -399,6 +439,16 @@ body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--txt);min-
   <div class="bar-right" id="bar-right">
     <div class="conn-dot" id="conn-dot"></div>
     <span class="conn-label" id="conn-label">Connecting…</span>
+    <div style="position:relative;display:inline-block" id="theme-menu-wrap">
+      <button class="btn btn-sec btn-sm" onclick="document.getElementById('masthead-theme-menu').classList.toggle('show')">🎨 Skin</button>
+      <div id="masthead-theme-menu" style="display:none;position:absolute;right:0;top:100%;margin-top:4px;background:var(--card);border:1px solid var(--bord);border-radius:8px;z-index:999;min-width:160px;box-shadow:var(--sh)">
+        <div style="padding:.35rem .5rem;font-size:.7rem;color:var(--txt2);border-bottom:1px solid var(--bord)">Formation Theme</div>
+        <button onclick="setMastheadTheme('midnight')" style="display:block;width:100%;text-align:left;padding:.45rem .85rem;font-size:.8rem;background:none;border:none;cursor:pointer;color:var(--txt)">🌑 Midnight</button>
+        <button onclick="setMastheadTheme('sovereign')" style="display:block;width:100%;text-align:left;padding:.45rem .85rem;font-size:.8rem;background:none;border:none;cursor:pointer;color:var(--txt)">⬡ Sovereign</button>
+        <button onclick="setMastheadTheme('formation')" style="display:block;width:100%;text-align:left;padding:.45rem .85rem;font-size:.8rem;background:none;border:none;cursor:pointer;color:var(--txt)">◈ Formation</button>
+        <button onclick="setMastheadTheme('light')" style="display:block;width:100%;text-align:left;padding:.45rem .85rem;font-size:.8rem;background:none;border:none;cursor:pointer;color:var(--txt)">☀ Light</button>
+      </div>
+    </div>
     <button class="btn btn-sec btn-sm" onclick="openIdentity()">⚙ Identity</button>
     <button class="btn btn-sec btn-sm" id="btn-ping-all" onclick="pingAll()">↻ Ping All</button>
     <button class="btn btn-dang btn-sm" onclick="clearLog()">✕ Clear Log</button>
@@ -411,7 +461,7 @@ body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--txt);min-
   <!-- SIDEBAR: vessel registry -->
   <div class="sidebar">
     <div class="sb-head">
-      <span class="sb-head-title">Formation</span>
+      <span class="sb-head-title" id="sb-head-title">Formation</span>
       <span class="sb-count" id="vessel-count">0 vessels</span>
     </div>
     <div class="vessel-list" id="vessel-list">
@@ -429,7 +479,19 @@ body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--txt);min-
   <!-- LOG -->
   <div class="content">
     <div class="log-head">
-      <span class="log-head-title">Formation Log</span>
+      <div style="display:flex;align-items:center;gap:.75rem">
+        <span class="log-head-title">Formation Log</span>
+        <div style="display:flex;gap:.25rem;background:var(--bg2);border-radius:6px;padding:2px">
+          <button id="view-log-btn" onclick="setView('log')" style="font-size:.72rem;padding:.2rem .55rem;border-radius:4px;border:none;cursor:pointer;background:var(--p);color:#fff">Log</button>
+          <button id="view-map-btn" onclick="setView('map')" style="font-size:.72rem;padding:.2rem .55rem;border-radius:4px;border:none;cursor:pointer;background:transparent;color:var(--txt2)">Map</button>
+        </div>
+        <div id="map-controls" style="display:none;gap:.3rem;align-items:center;margin-left:.25rem">
+          <button onclick="_mapZoom(1.2)" style="font-size:.8rem;width:22px;height:22px;line-height:1;border-radius:4px;border:1px solid var(--bord);background:var(--card);cursor:pointer;color:var(--txt)">+</button>
+          <button onclick="_mapZoom(0.83)" style="font-size:.8rem;width:22px;height:22px;line-height:1;border-radius:4px;border:1px solid var(--bord);background:var(--card);cursor:pointer;color:var(--txt)">&minus;</button>
+          <button onclick="_mapResetView()" style="font-size:.7rem;padding:.15rem .4rem;border-radius:4px;border:1px solid var(--bord);background:var(--card);cursor:pointer;color:var(--txt2)">Reset</button>
+          <span id="map-zoom-label" style="font-size:.7rem;color:var(--txt2);min-width:32px;text-align:right">100%</span>
+        </div>
+      </div>
       <div class="log-filters" id="log-filters">
         <span class="filter-chip all on" data-filter="all" onclick="toggleFilter(this)">All</span>
         <span class="filter-chip heartbeat on" data-filter="heartbeat" onclick="toggleFilter(this)">Arrive</span>
@@ -442,10 +504,16 @@ body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--txt);min-
       <span id="log-count" style="margin-left:auto;font-size:.72rem;color:var(--txt3)">0 events</span>
     </div>
     <div class="log-scroll" id="log-scroll"></div>
+    <canvas id="formation-map" style="display:none;width:100%;height:100%;flex:1;min-height:0;overflow:hidden;touch-action:none;user-select:none"></canvas>
     <!-- DIRECTIVE BAR -->
-    <div class="directive-bar">
-      <input class="directive-input" id="directive-input" placeholder="Broadcast a directive to all vessels…" onkeydown="if(event.key==='Enter')sendDirective()">
-      <button class="btn btn-p btn-sm" onclick="sendDirective()">⬡ Broadcast</button>
+    <div class="directive-bar" style="flex-direction:column;gap:.35rem;padding:.5rem 1rem">
+      <div style="display:flex;gap:.4rem;align-items:center">
+        <select id="directive-target" style="font-size:.73rem;padding:.22rem .35rem;border-radius:4px;border:1px solid var(--bord);background:var(--card);color:var(--txt);max-width:160px;flex-shrink:0">
+          <option value="all">⧡ All vessels</option>
+        </select>
+        <input class="directive-input" id="directive-input" placeholder="Send a directive…" style="flex:1" onkeydown="if(event.key==='Enter')sendDirective();">
+        <button class="btn btn-p btn-sm" onclick="sendDirective()">Send</button>
+      </div>
     </div>
   </div>
 
@@ -469,11 +537,18 @@ body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--txt);min-
       <div class="form-group">
         <label class="form-label">◈ Formation Server URL</label>
         <input class="form-input" id="id-server" placeholder="ws://172.20.10.5:8080 (blank = auto-detect)">
+        <div class="form-note" id="id-did-display" style="font-family:monospace;font-size:.72rem;margin-top:.35rem;opacity:.7"></div>
         <div class="form-note">Server running server.js. Auto-detect works if Masthead is served from the same host.</div>
       </div>
       <div class="form-group">
         <label class="form-label">Operator Handle</label>
         <input class="form-input" id="id-operator" placeholder="e.g. Fleet Commander">
+      </div>
+      <div class="form-group">
+        <label class="form-label">&#9881; Sovereign Storage Path</label>
+        <input class="form-input" id="id-storage-path" placeholder="e.g. C:\vessels  or  /media/usb/vessels  or  \\NAS\vessels">
+        <div class="form-note" id="id-storage-status" style="font-family:monospace;font-size:.72rem;margin-top:.35rem;opacity:.8"></div>
+        <div class="form-note">Vessel data is written here and readable from any device on the LAN. Leave blank to keep current path.</div>
       </div>
     </div>
     <div class="mf">
@@ -499,10 +574,41 @@ let identity = JSON.parse(localStorage.getItem(ID_KEY) || 'null') || {
   operator:  ''
 };
 
+// ── Vessel DID — sovereign identity for the Masthead ─────────────────────
+// Derives a did:key: from Ed25519 keypair stored in localStorage.
+// The Masthead is a sovereign vessel — it has its own permanent DID.
+const MastheadDID = {
+  _did: null, _ready: false,
+  async init() {
+    try {
+      const stored = localStorage.getItem('masthead_did_v1');
+      if (stored) { const s=JSON.parse(stored); this._did=s.did; this._ready=true; return; }
+      const kp = await crypto.subtle.generateKey({name:'Ed25519'},true,['sign','verify']);
+      const pub = await crypto.subtle.exportKey('raw',kp.publicKey);
+      const b64 = btoa(String.fromCharCode(...new Uint8Array(pub)));
+      // Base58 DID
+      const bytes = new Uint8Array(pub);
+      const A='123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+      let n=BigInt('0x'+Array.from(bytes).map(b=>b.toString(16).padStart(2,'0')).join(''));
+      let r='';const base=BigInt(58);
+      while(n>0n){r=A[Number(n%base)]+r;n/=base;}
+      for(const b of bytes){if(b!==0)break;r='1'+r;}
+      this._did='did:key:z6Mk'+r;
+      localStorage.setItem('masthead_did_v1',JSON.stringify({did:this._did,created:Date.now()}));
+      this._ready=true;
+    } catch(e) {
+      this._did='did:masthead:'+Math.random().toString(36).slice(2);
+      this._ready=true;
+    }
+  },
+  get did(){ return this._did||'did:masthead:unknown'; },
+  short(d){ const s=d||this._did||''; return s.length>24?s.slice(0,20)+'...':s; }
+};
+
 // ── STATE ─────────────────────────────────────────────────────────────────────
 const vessels   = new Map();   // vesselId → latest state payload
 const logItems  = [];          // [{ts, type, category, msg, bytes, vesselId}]
-const MAX_LOG   = 1000;
+const MAX_LOG   = 200;
 let   transport = null;
 // activeFilters contains the active category names.
 // Special value 'all' means no filter — show everything.
@@ -634,10 +740,7 @@ function handleMessage(msg) {
       // Vessel was departing (sleep state) and came back
       addLog('heartbeat', 'heartbeat', `${icon} ${name} rejoined`, bytes, msg.vesselId);
     } else {
-      // Known vessel — log ongoing status so operator sees formation activity
-      addLog('heartbeat', 'heartbeat',
-        `${icon} ${name} · ${intentCount} intention(s)`,
-        bytes, msg.vesselId);
+      // Known vessel — silent update (join/rejoin already logged)
     }
     renderVesselList();
     if (selectedVessel === msg.vesselId) renderDetail(msg.vesselId);
@@ -664,10 +767,7 @@ function handleMessage(msg) {
         `📋 ${name}${steward?' · '+steward:''} rejoined`,
         bytes, msg.vesselId);
     } else {
-      // Known vessel — log ongoing health so operator sees project status
-      addLog('heartbeat', 'heartbeat',
-        `📋 ${name}${steward?' · '+steward:''} · health ${health}`,
-        bytes, msg.vesselId);
+      // Known vessel — silent update (health visible in vessel panel)
     }
     renderVesselList();
     if (selectedVessel === msg.vesselId) renderDetail(msg.vesselId);
@@ -721,12 +821,9 @@ function handleMessage(msg) {
 
   // ── Masthead ping (another Masthead on network requesting snapshot) ────────
   if (type === 'masthead_ping') {
-    // Ignore echo of our own pings
+    // Ignore echo of our own ping (server fans it back to us)
     if ((msg._from || '').startsWith('masthead-v5')) return;
-    // Ignore SPM internal diagnostic pings (not addressed to masthead)
-    const _from = msg._from || '';
-    if (_from.startsWith('spm-') || _from.startsWith('bibbos-')) return;
-    addLog('ping', 'system', `Ping from ${_from || 'vessel'} — responding`, bytes);
+    addLog('ping', 'system', `Ping from ${msg._from || 'vessel'} — responding`, bytes);
     announcePresence();
     return;
   }
@@ -785,14 +882,24 @@ function pollRegistry() {
 
 function announcePresence() {
   if (!transport) return;
+  const _mid = 'masthead_' + getOrCreateId();
   transport.postMessage({
-    _type:     'masthead_heartbeat',
-    _app:      'masthead',
-    vesselId:  'masthead_' + getOrCreateId(),
-    name:      identity.name || 'The Masthead',
-    operator:  identity.operator || '',
-    ts:        new Date().toISOString()
+    _type:      'masthead_heartbeat',
+    _app:       'masthead',
+    vesselId:   _mid,
+    name:       identity.name || 'The Masthead',
+    entityName: identity.name || 'The Masthead',  // BiBBOS/SPM display field
+    entityIcon: '⬡',
+    operator:   identity.operator || '',
+    ts:         new Date().toISOString()
   });
+  // Pulse the ⬡ bar logo to confirm heartbeat is firing
+  const _logo = document.getElementById('masthead-bar-logo');
+  if (_logo) {
+    _logo.style.transform = 'scale(1.4)';
+    _logo.style.color = 'var(--succ)';
+    setTimeout(() => { _logo.style.transform = ''; _logo.style.color = ''; }, 400);
+  }
 }
 
 let _mastheadId = null;
@@ -831,26 +938,42 @@ function pingAll() {
 }
 
 // ── SEND DIRECTIVE ────────────────────────────────────────────────────────────
-function sendDirective() {
-  const input = document.getElementById('directive-input');
-  const msg   = (input.value || '').trim();
-  if (!msg || !transport) return;
-  const payload = {
-    _type:    'masthead_directive',
-    message:  msg,
-    operator: identity.operator || identity.name || 'Masthead',
-    ts:       new Date().toISOString()
+function sendDirective(){
+  const input=document.getElementById('directive-input');
+  const sel=document.getElementById('directive-target');
+  const msg=(input.value||'').trim();
+  if(!msg)return;
+  const tv=sel?sel.value:'all';
+  const tl=sel?sel.options[sel.selectedIndex].text:'All vessels';
+  const targets=tv==='all'?null:tv.startsWith('fleet:')?tv.slice(6).split(','):[tv];
+  const payload={
+    _type:'masthead_directive',
+    message:msg,
+    operator:identity.operator||identity.name||'Masthead',
+    ts:new Date().toISOString(),
+    targetVesselIds:targets,
   };
-  // Directives must reach ALL vessels — send via WS (cross-device) AND BC (same-browser)
-  transport.postMessage(payload);
-  // Also post directly to BroadcastChannel for same-browser vessels
-  try {
-    const bc = new BroadcastChannel('spm-formation');
-    bc.postMessage(payload);
-    bc.close();
-  } catch(e) {}
-  addLog('directive', 'directive', `⬡ Directive: "${msg}"`, JSON.stringify(payload).length);
-  input.value = '';
+  if(transport)transport.postMessage(payload);
+  try{const bc=new BroadcastChannel('spm-formation');bc.postMessage(payload);bc.close();}catch(e){}
+  addLog('directive','directive',`⧡ → ${tl}: "${msg}"`,JSON.stringify(payload).length);
+  input.value='';
+  _showDirectiveSent(tl,msg);
+}
+
+function _showDirectiveSent(target,message){
+  let t=document.getElementById('directive-sent-toast');
+  if(!t){
+    t=document.createElement('div');
+    t.id='directive-sent-toast';
+    t.style.cssText='position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;background:var(--card);border:1.5px solid var(--succ);border-radius:10px;padding:.75rem 1.1rem;max-width:300px;box-shadow:var(--sh);display:flex;flex-direction:column;gap:.3rem;transition:opacity .4s';
+    document.body.appendChild(t);
+  }
+  t.style.opacity='1';t.style.pointerEvents='auto';
+  t.innerHTML='<div style="display:flex;align-items:center;gap:.5rem"><span style="color:var(--succ);font-size:1rem">✓</span><span style="font-weight:600;font-size:.875rem">Directive Sent</span></div>'
+    +`<div style="font-size:.8rem;color:var(--txt2)"><strong>To:</strong> ${target}</div>`
+    +`<div style="font-size:.8rem;color:var(--txt2);font-style:italic">&ldquo;${message.slice(0,80)}${message.length>80?'&hellip;':''}&rdquo;</div>`;
+  if(t._timer)clearTimeout(t._timer);
+  t._timer=setTimeout(()=>{t.style.opacity='0';t.style.pointerEvents='none';},4000);
 }
 
 // ── LOG ───────────────────────────────────────────────────────────────────────
@@ -870,6 +993,28 @@ const LOG_LABELS = {
 
 function addLog(type, category, msg, bytes, vesselId) {
   const ts = new Date();
+  // Deduplicate: collapse identical consecutive messages into a counter
+  if (logItems.length > 0) {
+    const last = logItems[0];
+    if (last.msg === msg && last.category === category && last.vesselId === (vesselId||null)) {
+      last.count = (last.count || 1) + 1;
+      last.ts = ts;
+      // Update the DOM entry if visible
+      const scroll = document.getElementById('log-scroll');
+      if (scroll && scroll.firstChild) {
+        const countEl = scroll.firstChild.querySelector('.log-count');
+        if (countEl) countEl.textContent = '×' + last.count;
+        else {
+          const span = document.createElement('span');
+          span.className = 'log-count';
+          span.style.cssText = 'margin-left:.35rem;background:var(--txt2);color:var(--card);border-radius:10px;padding:.05rem .35rem;font-size:.7rem';
+          span.textContent = '×' + last.count;
+          scroll.firstChild.appendChild(span);
+        }
+      }
+      return;
+    }
+  }
   const entry = { ts, type, category, msg, bytes, vesselId: vesselId||null };
   logItems.unshift(entry);
   if (logItems.length > MAX_LOG) logItems.pop();
@@ -967,6 +1112,8 @@ function renderVesselList() {
   const list  = document.getElementById('vessel-list');
   const count = document.getElementById('vessel-count');
   const active = [];
+  // vessels Map stores the full heartbeat msg including logoData
+  // No cross-origin localStorage read needed
   vessels.forEach((v, id) => { active.push({ id, v }); });
   count.textContent = active.length + ' vessel' + (active.length !== 1 ? 's' : '');
 
@@ -975,15 +1122,25 @@ function renderVesselList() {
     return;
   }
 
-  // Sort: BiBBOS first, then SPM, then others
+  // Sort: BiBBOS first, then SPM, then others; within fleet group by parentDid
   const order = { bibbos:0, spm:1, masthead:2, gateway:3 };
   active.sort((a,b) => (order[a.v._app]??9) - (order[b.v._app]??9));
 
   list.innerHTML = '';
-  // Only show active vessels — departed are removed immediately on departure event
-  active.forEach(({ id, v }) => {
+
+  // ── Fleet grouping ────────────────────────────────────────────────────
+  // Group vessels by fleet.name — vessels with same fleet.name appear together
+  // Vessels with no fleet or role='Standalone' form their own group
+  const fleetGroups = new Map(); // fleetName → [{id,v}]
+  active.forEach(({id,v}) => {
+    const fl = v.fleet || {};
+    const gKey = (fl.name && fl.role && fl.role!=='Standalone') ? fl.name : '__standalone__';
+    if (!fleetGroups.has(gKey)) fleetGroups.set(gKey, []);
+    fleetGroups.get(gKey).push({id,v});
+  });
+
+  const renderVessel = ({id, v}) => {
     list.appendChild(buildVesselCard(id, v));
-    // If this vessel is selected, inject inline detail immediately below
     if (selectedVessel === id) {
       const detailEl = document.createElement('div');
       detailEl.className = 'vessel-detail open';
@@ -991,6 +1148,17 @@ function renderVesselList() {
       detailEl.innerHTML = buildDetailHTML(id, v);
       list.appendChild(detailEl);
     }
+  };
+
+  fleetGroups.forEach((members, gKey) => {
+    if (gKey !== '__standalone__' && fleetGroups.size > 1) {
+      // Fleet header
+      const hdr = document.createElement('div');
+      hdr.style.cssText = 'padding:.4rem .75rem;font-size:.7rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--p);background:var(--card2);border-top:1px solid var(--bord);border-bottom:1px solid var(--bord);position:sticky;top:0;z-index:1';
+      hdr.textContent = '⬡ ' + gKey + ' (' + members.length + ')';
+      list.appendChild(hdr);
+    }
+    members.forEach(renderVessel);
   });
 }
 
@@ -1021,7 +1189,10 @@ function buildVesselCard(id, v) {
   if (isBib) {
     const fin = v.financialSummary || {};
     const int = v.intentionsSummary || {};
+    const fl = v.fleet || {};
+    const flRole = fl.role && fl.role!=='Standalone' ? `<span style="font-size:.65rem;padding:.1rem .3rem;border-radius:3px;background:rgba(96,165,250,.12);color:var(--p)">${fl.role}</span>` : '';
     metaHtml = `
+      ${flRole ? `<div class="vc-row"><span>Fleet Role</span><span>${flRole}</span></div>` : ''}
       <div class="vc-row"><span>Intentions</span><span>${int.total||0} total · ${int.issued||0} active</span></div>
       <div class="vc-row"><span>Cash</span><span>${v.sym||'$'}${fmt(fin.cash||0)}</span></div>
       ${v.loc ? `<div class="vc-row"><span>Location</span><span>${esc(v.loc)}</span></div>` : ''}`;
@@ -1237,9 +1408,26 @@ function openDirectiveTo(vesselId) {
 
 // ── IDENTITY MODAL ────────────────────────────────────────────────────────────
 function openIdentity() {
+  const didEl = document.getElementById('id-did-display');
+  if(didEl) didEl.textContent = '⬡ DID: ' + MastheadDID.did;
+
   document.getElementById('id-name').value     = identity.name || '';
   document.getElementById('id-server').value   = identity.serverUrl || '';
   document.getElementById('id-operator').value = identity.operator || '';
+  // Fetch current sovereign storage path from server
+  const _pathEl = document.getElementById('id-storage-path');
+  const _statusEl = document.getElementById('id-storage-status');
+  if (_pathEl && identity.serverUrl) {
+    const _base = identity.serverUrl.replace(/\/formation$/,'').replace(/^ws:/,'http:').replace(/^wss:/,'https:');
+    fetch(_base+'/api/sovereign/storage-info')
+      .then(r=>r.json())
+      .then(d=>{
+        if(d.ok){
+          _pathEl.placeholder = d.storagePath;
+          if(_statusEl) _statusEl.textContent = '✓ Current: '+d.storagePath+' · '+d.vesselCount+' vessel(s)';
+        }
+      }).catch(()=>{});
+  }
   document.getElementById('identity-modal').classList.add('show');
 }
 
@@ -1251,6 +1439,19 @@ function saveIdentity() {
   identity.name      = document.getElementById('id-name').value.trim() || 'The Masthead';
   identity.serverUrl = document.getElementById('id-server').value.trim();
   identity.operator  = document.getElementById('id-operator').value.trim();
+  // Sovereign storage path — POST to server
+  const _storagePath = (document.getElementById('id-storage-path')?.value||'').trim();
+  if (_storagePath && identity.serverUrl) {
+    const _base = identity.serverUrl.replace(/\/formation$/,'').replace(/^ws:/,'http:').replace(/^wss:/,'https:');
+    fetch(_base+'/api/sovereign/storage-path', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({path:_storagePath}),
+    }).then(r=>r.json()).then(d=>{
+      const el=document.getElementById('id-storage-status');
+      if(el)el.textContent=d.ok?'✓ Storage: '+d.storagePath:'✗ '+d.error;
+    }).catch(()=>{});
+  }
   localStorage.setItem(ID_KEY, JSON.stringify(identity));
   closeIdentity();
   // Reconnect with new server URL
@@ -1301,6 +1502,11 @@ document.addEventListener('DOMContentLoaded', () => {
   setTimeout(announcePresence, 200);
   // Note: transport.onopen is set inside initTransport — pings all on WS connect
 
+  // ── Masthead heartbeat — 15s cadence, matching BiBBOS/SPM ─────────────
+  // Without this interval the Masthead announces once on connect then goes
+  // silent. The relay registry drops it after the prune cycle.
+  setInterval(() => { announcePresence(); }, 15000);
+
   // Periodic time-ago refresh and vessel data freshness
   setInterval(() => {
     if (vessels.size) renderVesselList();
@@ -1319,9 +1525,594 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(openIdentity, 500);
   }
 
-  document.getElementById('bar-sub').textContent =
-    `Formation Oversight · v5.0 · ${identity.name}`;
+  // Sovereign DID init + constitutional recognition
+  MastheadDID.init().then(function(){
+    document.getElementById('bar-sub').textContent =
+      'Formation Oversight · v5.0 · ' + (identity.name||'Masthead') + ' · ' + MastheadDID.short(MastheadDID.did);
+    addLog('system','system','⬡ Masthead DID: '+MastheadDID.did, 0);
+    // Constitutional self-assessment
+    const _conds = [
+      {id:'I',   name:'Transport Present',      pass: typeof FormationTransport !== 'undefined'},
+      {id:'II',  name:'Identity Sovereign',     pass: MastheadDID._ready && MastheadDID.did.startsWith('did:')},
+      {id:'III', name:'Boundary Intact',        pass: !['analytics.google.com','segment.io','mixpanel.com']
+                                                        .some(d=>document.querySelectorAll('script[src*="'+d+'"]').length>0)},
+      {id:'IV',  name:'No External Dependency', pass: typeof FormationTransport !== 'undefined'},
+    ];
+    const _viols = _conds.filter(c=>!c.pass).map(c=>c.id);
+    addLog('system','system',
+      _viols.length===0
+        ? '⬡ Constitutional recognition: ✅ All formation conditions met'
+        : '⚠️ Constitutional recognition: conditions ' + _viols.join(', ') + ' not met', 0);
+  });
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// FORMATION MAP — live visual observatory
+// Renders the fleet as a node graph: parent at centre, children orbiting,
+// SPM vessels as an outer ring. Each node pulses on heartbeat.
+// ══════════════════════════════════════════════════════════════════════════════
+
+let _mapView = 'log';
+let _mapZoomLevel=1,_mapPanX=0,_mapPanY=0;
+let _mapDragging=false,_mapDragStart={x:0,y:0},_mapPanStart={x:0,y:0};
+function _mapZoom(f){_mapZoomLevel=Math.min(4,Math.max(0.25,_mapZoomLevel*f));const l=document.getElementById('map-zoom-label');if(l)l.textContent=Math.round(_mapZoomLevel*100)+'%';}
+function _mapResetView(){_mapZoomLevel=1;_mapPanX=0;_mapPanY=0;_mapNodes=[];const l=document.getElementById('map-zoom-label');if(l)l.textContent='100%';}
+let _mapAnimId = null;
+let _mapNodes = [];  // {id, x, y, tx, ty, name, role, app, fleet, health, pulse, fresh}
+
+function setView(view) {
+  _mapView = view;
+  const logScroll = document.getElementById('log-scroll');
+  const mapCanvas = document.getElementById('formation-map');
+  const logFilters = document.getElementById('log-filters');
+  const logBtn = document.getElementById('view-log-btn');
+  const mapBtn = document.getElementById('view-map-btn');
+
+  if (view === 'map') {
+    logScroll.style.display = 'none';
+    logFilters.style.display = 'none';
+    mapCanvas.style.display='block'; mapCanvas.style.cursor='grab';
+    logBtn.style.background='transparent'; logBtn.style.color='var(--txt2)';
+    mapBtn.style.background='var(--p)'; mapBtn.style.color='#fff';
+    const _mc=document.getElementById('map-controls'); if(_mc)_mc.style.display='flex';
+    if(!mapCanvas._eb){ mapCanvas._eb=true;
+      mapCanvas.addEventListener('wheel',e=>{e.preventDefault();_mapZoom(e.deltaY<0?1.1:0.91);},{passive:false});
+      // Node tooltip on hover
+      mapCanvas.addEventListener('mousemove',e=>{
+        if(_mapDragging)return;
+        const rect=mapCanvas.getBoundingClientRect();
+        const mx=(e.clientX-rect.left-mapCanvas.width/2-_mapPanX)/_mapZoomLevel+mapCanvas.width/2;
+        const my=(e.clientY-rect.top-mapCanvas.height/2-_mapPanY)/_mapZoomLevel+mapCanvas.height/2;
+        let hit=null;
+        for(const n of _mapNodes){if(Math.hypot(n.x-mx,n.y-my)<=n.r+4){hit=n;break;}}
+        let tt=document.getElementById('map-tooltip');
+        if(hit){
+          if(!tt){tt=document.createElement('div');tt.id='map-tooltip';
+            tt.style.cssText='position:fixed;z-index:9999;background:var(--card);border:1px solid var(--bord);border-radius:8px;padding:.5rem .75rem;font-size:.78rem;max-width:220px;box-shadow:var(--sh);pointer-events:none';
+            document.body.appendChild(tt);}
+          const pf=hit.fleet||{};const fs=(hit.v&&hit.v.financialSummary)||{};
+          const age=hit.v&&hit.v._lastSeen?Math.round((Date.now()-hit.v._lastSeen)/60000):null;
+          tt.innerHTML=`<strong>${hit.name}</strong>`
+            +(pf.role?`<div style='color:var(--txt2);font-size:.72rem'>${pf.role}</div>`:'')
+            +(pf.name?`<div style='color:var(--p);font-size:.72rem'>⧡ ${pf.name}</div>`:'')
+            +(fs.cash!=null?`<div style='margin-top:.25rem;font-size:.72rem'>Cash: ${(hit.v&&hit.v.sym)||'$'}${Number(fs.cash||0).toLocaleString()}</div>`:'')
+            +(age!=null?`<div style='color:var(--txt2);font-size:.7rem;margin-top:.2rem'>● ${age<2?'In Formation':age+'m ago'}</div>`:'');
+          tt.style.left=(e.clientX+14)+'px';tt.style.top=(e.clientY-10)+'px';tt.style.display='block';
+          if(!_mapDragging)mapCanvas.style.cursor='pointer';
+        }else{
+          if(tt)tt.style.display='none';
+          if(!_mapDragging)mapCanvas.style.cursor='grab';
+        }
+      });
+      mapCanvas.addEventListener('mouseleave',()=>{const tt=document.getElementById('map-tooltip');if(tt)tt.style.display='none';});
+      mapCanvas.addEventListener('mousedown',e=>{_mapDragging=true;_mapDragStart={x:e.clientX,y:e.clientY};_mapPanStart={x:_mapPanX,y:_mapPanY};mapCanvas.style.cursor='grabbing';});
+      window.addEventListener('mousemove',e=>{if(!_mapDragging)return;_mapPanX=_mapPanStart.x+(e.clientX-_mapDragStart.x);_mapPanY=_mapPanStart.y+(e.clientY-_mapDragStart.y);});
+      window.addEventListener('mouseup',()=>{_mapDragging=false;mapCanvas.style.cursor='grab';});
+    }
+    renderFormationMap();
+  } else {
+    logScroll.style.display = '';
+    logFilters.style.display = '';
+    mapCanvas.style.display = 'none';
+    logBtn.style.background = 'var(--p)';
+    logBtn.style.color = '#fff';
+    mapBtn.style.background='transparent';mapBtn.style.color='var(--txt2)';
+    const _mc2=document.getElementById('map-controls');if(_mc2)_mc2.style.display='none';
+    if (_mapAnimId) { cancelAnimationFrame(_mapAnimId); _mapAnimId = null; }
+  }
+}
+
+function _mapGetColor(app, fleet, health) {
+  if (app === 'masthead') return { fill: '#7c3aed', stroke: '#a855f7', text: '#f3e8ff' };
+  if (app === 'spm') return { fill: '#1e6091', stroke: '#2e86ab', text: '#e0f4ff' };
+  if (fleet && fleet.role === 'Parent / Headquarters') return { fill: '#0f6e56', stroke: '#1d9e75', text: '#e1f5ee' };
+  if (fleet && fleet.name) return { fill: '#185fa5', stroke: '#378add', text: '#e6f1fb' };
+  return { fill: '#3d3d3a', stroke: '#888780', text: '#f1efe8' };
+}
+
+function _mapLayout() {
+  const canvas = document.getElementById('formation-map');
+  const W = canvas.width, H = canvas.height;
+  const cx = W / 2, cy = H / 2;
+  const now = Date.now();
+
+  const active = [];
+  vessels.forEach((v, id) => { active.push({ id, v }); });
+  if (!active.length) return;
+
+  // Group by fleet
+  const fleets = new Map(); // fleetName \\u2192 [{id,v}]
+  const standalone = [];
+  active.forEach(({ id, v }) => {
+    const fl = v.fleet || {};
+    if (fl.name && fl.role !== 'Standalone') {
+      if (!fleets.has(fl.name)) fleets.set(fl.name, []);
+      fleets.get(fl.name).push({ id, v });
+    } else {
+      standalone.push({ id, v });
+    }
+  });
+
+  const newNodes = [];
+  let fleetIdx = 0;
+  const fleetAngleStep = fleets.size > 0 ? (Math.PI * 2) / fleets.size : 0;
+
+  fleets.forEach((members, fleetName) => {
+    // Place fleet in a cluster
+    const fleetAngle = fleetIdx * fleetAngleStep - Math.PI / 2;
+    const fleetDist = Math.min(W, H) * 0.28;
+    const fcx = cx + Math.cos(fleetAngle) * (fleets.size === 1 ? 0 : fleetDist * 0.6);
+    const fcy = cy + Math.sin(fleetAngle) * (fleets.size === 1 ? 0 : fleetDist * 0.4);
+
+    // Sort: parent first, then others
+    members.sort((a, b) => {
+      const aParent = a.v.fleet && a.v.fleet.role === 'Parent / Headquarters' ? 0 : 1;
+      const bParent = b.v.fleet && b.v.fleet.role === 'Parent / Headquarters' ? 0 : 1;
+      return aParent - bParent;
+    });
+
+    const parent = members.find(m => m.v.fleet && m.v.fleet.role === 'Parent / Headquarters');
+    const children = members.filter(m => m !== parent);
+
+    if (parent) {
+      const existing = _mapNodes.find(n => n.id === parent.id);
+      const fresh = (now - (parent.v._lastSeen || 0)) < 60000;
+      newNodes.push({
+        id: parent.id, v: parent.v,
+        tx: fcx, ty: fcy,
+        x: existing ? existing.x : fcx,
+        y: existing ? existing.y : fcy,
+        name: parent.v.entityName || parent.v.projectName || 'Vessel',
+        role: parent.v.fleet ? parent.v.fleet.role : '',
+        app: parent.v._app || 'bibbos',
+        fleet: parent.v.fleet,
+        health: parent.v.healthScore,
+        fresh,
+        pulse: existing ? existing.pulse : 0,
+        isParent: true,
+        fleetName,
+        r: 28,
+      });
+    }
+
+    children.forEach((m, i) => {
+      const angle = (i / Math.max(children.length, 1)) * Math.PI * 2 - Math.PI / 2;
+      const orbitR = Math.min(W, H) * (fleets.size === 1 ? 0.26 : 0.18);
+      const tx = fcx + Math.cos(angle) * orbitR;
+      const ty = fcy + Math.sin(angle) * orbitR;
+      const existing = _mapNodes.find(n => n.id === m.id);
+      const fresh = (now - (m.v._lastSeen || 0)) < 60000;
+      newNodes.push({
+        id: m.id, v: m.v,
+        tx, ty,
+        x: existing ? existing.x : tx,
+        y: existing ? existing.y : ty,
+        name: m.v.entityName || m.v.projectName || 'Vessel',
+        role: m.v.fleet ? m.v.fleet.role : '',
+        app: m.v._app || 'bibbos',
+        fleet: m.v.fleet,
+        health: m.v.healthScore,
+        fresh,
+        pulse: existing ? existing.pulse : 0,
+        isParent: false,
+        fleetName,
+        r: 20,
+      });
+    });
+
+    fleetIdx++;
+  });
+
+  // Standalone vessels (no fleet) \\u2014 bottom arc
+  standalone.forEach((m, i) => {
+    const isMH = m.v._app === 'masthead';
+    const nonMH = standalone.filter(s => s.v._app !== 'masthead');
+    const si = nonMH.indexOf(m);
+    const angle = (si / Math.max(nonMH.length, 1)) * Math.PI - Math.PI;
+    const r2 = Math.min(W, H) * 0.35;
+    const tx = isMH ? cx : cx + Math.cos(angle) * r2;
+    const ty = isMH ? 44 : cy + Math.sin(angle) * r2 * 0.5 + H * 0.3;
+    const existing = _mapNodes.find(n => n.id === m.id);
+    const fresh = (now - (m.v._lastSeen || 0)) < 60000;
+    newNodes.push({
+      id: m.id, v: m.v, tx, ty,
+      x: existing ? existing.x : tx,
+      y: existing ? existing.y : ty,
+      name: isMH ? (m.v.entityName||m.v.name||'The Masthead') : (m.v.entityName||m.v.projectName||'Vessel'),
+      role: isMH ? 'Masthead' : '',
+      app: m.v._app || 'bibbos', fleet: null,
+      health: m.v.healthScore, fresh,
+      pulse: existing ? existing.pulse : 0,
+      isParent: false, isMasthead: isMH,
+      logoData: m.v.logoData||m.v.entityLogoData||'',
+      fleetName: null, r: isMH ? 22 : 16,
+    });
+  });
+
+  _mapNodes = newNodes;
+}
+
+function _mapTick() {
+  const EASE = 0.08;
+  _mapNodes.forEach(n => {
+    n.x += (n.tx - n.x) * EASE;
+    n.y += (n.ty - n.y) * EASE;
+    if (n.pulse > 0) n.pulse = Math.max(0, n.pulse - 0.04);
+  });
+}
+
+function _mapDraw() {
+  const canvas = document.getElementById('formation-map');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.save();
+  ctx.translate(W/2+_mapPanX, H/2+_mapPanY);
+  ctx.scale(_mapZoomLevel, _mapZoomLevel);
+  ctx.translate(-W/2, -H/2);
+
+  // Background grid — subtle
+  ctx.strokeStyle = isDark ? 'rgba(255,255,255,.04)' : 'rgba(0,0,0,.04)';
+  ctx.lineWidth = 0.5;
+  const gridStep = 48;
+  for (let x = 0; x < W; x += gridStep) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+  for (let y = 0; y < H; y += gridStep) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+
+  if (!_mapNodes.length) {
+    if(typeof vessels==='undefined'||vessels.size===0){
+      ctx.restore();
+      ctx.fillStyle = isDark ? 'rgba(255,255,255,.2)' : 'rgba(0,0,0,.2)';
+      ctx.font = '14px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('Awaiting formation…', W/2, H/2);
+    }
+    return;
+  }
+
+  // Draw fleet boundary rings
+  const fleetGroups = new Map();
+  _mapNodes.forEach(n => {
+    if (n.fleetName) {
+      if (!fleetGroups.has(n.fleetName)) fleetGroups.set(n.fleetName, []);
+      fleetGroups.get(n.fleetName).push(n);
+    }
+  });
+
+  fleetGroups.forEach((nodes, name) => {
+    if (nodes.length < 2) return;
+    // Draw light boundary around fleet nodes
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    nodes.forEach(n => {
+      minX = Math.min(minX, n.x - n.r - 20);
+      maxX = Math.max(maxX, n.x + n.r + 20);
+      minY = Math.min(minY, n.y - n.r - 20);
+      maxY = Math.max(maxY, n.y + n.r + 20);
+    });
+    const pad = 24;
+    ctx.beginPath();
+    ctx.roundRect(minX - pad, minY - pad, maxX - minX + pad * 2, maxY - minY + pad * 2, 16);
+    ctx.strokeStyle = isDark ? 'rgba(29,158,117,.25)' : 'rgba(15,110,86,.18)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([6, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // Fleet label
+    ctx.font = '500 11px sans-serif';
+    ctx.fillStyle = isDark ? 'rgba(29,158,117,.7)' : 'rgba(15,110,86,.7)';
+    ctx.textAlign = 'left';
+    const _displayName = name.startsWith('__parent_') ? '' : name.startsWith('__') ? '' : name;
+    if (_displayName) ctx.fillText('⬡ ' + _displayName, minX - pad + 8, minY - pad + 14);
+  });
+
+  // Draw witness lines: Masthead → all vessels (light, dashed)
+  const mastheadNode = _mapNodes.find(n => n.isMasthead);
+  if (mastheadNode) {
+    _mapNodes.filter(n => !n.isMasthead).forEach(n => {
+      ctx.beginPath();
+      ctx.moveTo(mastheadNode.x, mastheadNode.y + mastheadNode.r);
+      ctx.lineTo(n.x, n.y - n.r);
+      ctx.strokeStyle = isDark ? 'rgba(168,85,247,.12)' : 'rgba(124,58,237,.08)';
+      ctx.lineWidth = 0.5;
+      ctx.setLineDash([3, 6]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    });
+  }
+
+  // Draw peer lines between co-parents in same named fleet
+  const _pNodes = _mapNodes.filter(n => n.isParent && n.fleetName);
+  for (let _pi=0; _pi<_pNodes.length; _pi++) {
+    for (let _pj=_pi+1; _pj<_pNodes.length; _pj++) {
+      if (_pNodes[_pi].fleetName !== _pNodes[_pj].fleetName) continue;
+      const _pa=_pNodes[_pi], _pb=_pNodes[_pj];
+      ctx.beginPath(); ctx.moveTo(_pa.x,_pa.y); ctx.lineTo(_pb.x,_pb.y);
+      ctx.strokeStyle=isDark?'rgba(29,158,117,.3)':'rgba(15,110,86,.2)';
+      ctx.lineWidth=1; ctx.setLineDash([6,4]); ctx.stroke(); ctx.setLineDash([]);
+    }
+  }
+
+  // Masthead witness lines
+  const _mhn = _mapNodes.find(n => n.isMasthead);
+  if (_mhn) { _mapNodes.filter(n => !n.isMasthead).forEach(vn => {
+    ctx.beginPath(); ctx.moveTo(_mhn.x, _mhn.y+_mhn.r); ctx.lineTo(vn.x, vn.y-vn.r);
+    ctx.strokeStyle=isDark?'rgba(124,58,237,.1)':'rgba(76,29,149,.07)';
+    ctx.lineWidth=0.5; ctx.setLineDash([3,7]); ctx.stroke(); ctx.setLineDash([]);
+  }); }
+
+  // Draw edges: parent → children
+  _mapNodes.forEach(n => {
+    if (!n.isParent || !n.fleetName) return;
+    const children = _mapNodes.filter(c => c.fleetName === n.fleetName && !c.isParent
+      && Math.abs(c.tx - (n.subCx||n.tx)) <= 200);
+    const _drawChildren = children.length > 0 ? children
+      : _mapNodes.filter(c => c.fleetName === n.fleetName && !c.isParent);
+    _drawChildren.forEach(child => {
+      const edgeFresh = n.fresh && child.fresh;
+      const edgeCol = edgeFresh
+        ? (isDark ? 'rgba(29,158,117,.55)' : 'rgba(15,110,86,.40)')
+        : (isDark ? 'rgba(255,255,255,.12)' : 'rgba(0,0,0,.10)');
+      // Draw line from parent edge to child edge (not centres)
+      const dx = child.x - n.x, dy = child.y - n.y;
+      const dist = Math.sqrt(dx*dx+dy*dy)||1;
+      const ux = dx/dist, uy = dy/dist;
+      const x1 = n.x + ux*n.r, y1 = n.y + uy*n.r;
+      const x2 = child.x - ux*child.r, y2 = child.y - uy*child.r;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.strokeStyle = edgeCol;
+      ctx.lineWidth = edgeFresh ? 1.5 : 0.75;
+      ctx.setLineDash(edgeFresh ? [] : [4, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // Arrowhead at child end
+      if (dist > 10) {
+        const aSize = 6;
+        const ax = x2 - ux*aSize, ay = y2 - uy*aSize;
+        ctx.beginPath();
+        ctx.moveTo(x2, y2);
+        ctx.lineTo(ax - uy*aSize*0.5, ay + ux*aSize*0.5);
+        ctx.lineTo(ax + uy*aSize*0.5, ay - ux*aSize*0.5);
+        ctx.closePath();
+        ctx.fillStyle = edgeCol;
+        ctx.fill();
+      }
+    });
+  });
+
+  // Draw nodes
+  _mapNodes.forEach(n => {
+    const col = _mapGetColor(n.app, n.fleet, n.health);
+    const r = n.r;
+
+    // Pulse ring
+    if (n.pulse > 0) {
+      const pr = r + 12 * (1 - n.pulse);
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, pr, 0, Math.PI * 2);
+      ctx.strokeStyle = col.stroke + Math.round(n.pulse * 80).toString(16).padStart(2, '0');
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+
+    // Node circle
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = col.fill;
+    ctx.fill();
+    ctx.strokeStyle = col.stroke;
+    ctx.lineWidth = n.isParent ? 2.5 : 1.5;
+    ctx.stroke();
+
+    // Freshness indicator dot
+    if (n.fresh) {
+      ctx.beginPath();
+      ctx.arc(n.x + r * 0.7, n.y - r * 0.7, 5, 0, Math.PI * 2);
+      ctx.fillStyle = '#1d9e75';
+      ctx.fill();
+    }
+
+    // Logo image or initials
+    if (!window._mapImgCache) window._mapImgCache = {};
+    if (n.logoData) {
+      const _ck=n.id, _cc=window._mapImgCache;
+      if (!_cc[_ck] || _cc[_ck]._src !== n.logoData) { const img=new Image(); img.src=n.logoData; img._src=n.logoData; _cc[_ck]=img; }
+      const _img=_cc[_ck];
+      if (_img.complete && _img.naturalWidth > 0) {
+        const _s=(n.r-3)*2;
+        ctx.save(); ctx.beginPath(); ctx.arc(n.x,n.y,n.r-2,0,Math.PI*2); ctx.clip();
+        ctx.drawImage(_img,n.x-_s/2,n.y-_s/2,_s,_s); ctx.restore();
+      } else {
+        const _i=n.name.split(/[\s\-–—&]+/).filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase();
+        ctx.font=n.isParent?'500 13px sans-serif':'500 11px sans-serif';
+        ctx.fillStyle=col.text; ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText(_i||'?',n.x,n.y);
+      }
+    } else {
+      ctx.font = n.isParent ? '500 13px sans-serif' : '500 11px sans-serif';
+      ctx.fillStyle = col.text; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const initials = n.name.split(/[\s\-–—&]+/).filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase();
+      ctx.fillText(initials||'?', n.x, n.y);
+    }
+    // Masthead node — draw ⬡ symbol
+    if (n.isMasthead) {
+      ctx.font = '500 14px sans-serif';
+      ctx.fillStyle = col.text;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('⬡', n.x, n.y);
+    }
+    if (n.isMasthead) {
+      ctx.font = 'bold 14px sans-serif';
+      ctx.fillStyle = col.text; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('⬡', n.x, n.y);
+    }
+    // Name label below node
+    const labelY = n.y + r + 14;
+    ctx.font = n.isParent ? '500 11px sans-serif' : '400 10px sans-serif';
+    ctx.fillStyle = isDark ? 'rgba(255,255,255,.8)' : 'rgba(0,0,0,.75)';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    const maxLabelW = 120;
+    let label = n.name;
+    if (ctx.measureText(label).width > maxLabelW) {
+      while (ctx.measureText(label + '…').width > maxLabelW && label.length > 3)
+        label = label.slice(0, -1);
+      label += '…';
+    }
+    ctx.fillText(label, n.x, labelY);
+
+    // Role tag
+    if (n.role && n.role !== 'Standalone') {
+      ctx.font = '400 9px sans-serif';
+      ctx.fillStyle = isDark ? 'rgba(255,255,255,.4)' : 'rgba(0,0,0,.4)';
+      ctx.fillText(n.role, n.x, labelY + 13);
+    }
+
+    // Health bar for SPM
+    if (n.app === 'spm' && n.health != null) {
+      const bw = r * 1.6, bh = 4;
+      const bx = n.x - bw / 2, by = n.y + r + 4;
+      ctx.fillStyle = isDark ? 'rgba(255,255,255,.1)' : 'rgba(0,0,0,.1)';
+      ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 2); ctx.fill();
+      const pct = Math.min(100, Math.max(0, n.health)) / 100;
+      ctx.fillStyle = pct >= 0.7 ? '#1d9e75' : pct >= 0.4 ? '#ba7517' : '#e24b4a';
+      ctx.beginPath(); ctx.roundRect(bx, by, bw * pct, bh, 2); ctx.fill();
+    }
+  });
+
+  ctx.restore();
+  ctx.restore();
+  // Legend
+  const lx = 12, ly = H - 14;
+  ctx.font = '400 10px sans-serif';
+  ctx.textBaseline = 'alphabetic';
+  [
+    { col: '#7c3aed', label: 'Masthead' },
+    { col: '#4c1d95', label: 'Masthead' },
+    { col: '#0f6e56', label: 'Fleet parent' },
+    { col: '#185fa5', label: 'Fleet member' },
+    { col: '#6d28d9', label: 'SPM' },
+    { col: '#3d3d3a', label: 'Standalone' },
+  ].forEach((item, i) => {
+    const x = lx + i * 100;
+    ctx.beginPath(); ctx.arc(x + 5, ly - 4, 4, 0, Math.PI * 2);
+    ctx.fillStyle = item.col; ctx.fill();
+    ctx.fillStyle = isDark ? 'rgba(255,255,255,.45)' : 'rgba(0,0,0,.45)';
+    ctx.textAlign = 'left';
+    ctx.fillText(item.label, x + 12, ly);
+  });
+}
+
+function _mapFrame() {
+  if (_mapView !== 'map') return;
+  _mapLayout();
+  _mapTick();
+  _mapDraw();
+  _mapAnimId = requestAnimationFrame(_mapFrame);
+}
+
+function renderFormationMap() {
+  const canvas = document.getElementById('formation-map');
+  if (!canvas) return;
+  const content = canvas.closest('.content') || canvas.parentElement;
+  // Use offsetWidth/offsetHeight — not affected by scroll position
+  const w = content.offsetWidth || 600;
+  const h = Math.max(360, (content.offsetHeight || 400) - 60);
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w;
+    canvas.height = h;
+  }
+  if (_mapAnimId) cancelAnimationFrame(_mapAnimId);
+  _mapFrame();
+}
+
+// ResizeObserver keeps canvas sized correctly as layout changes
+function _initMapResizeObserver() {
+  const canvas = document.getElementById('formation-map');
+  if (!canvas || !window.ResizeObserver) return;
+  const content = canvas.closest('.content') || canvas.parentElement;
+  const ro = new ResizeObserver(() => { if (_mapView === 'map') renderFormationMap(); });
+  ro.observe(content);
+  const sidebar = document.querySelector('.sidebar');
+  if (sidebar) ro.observe(sidebar);
+}
+
+// Pulse a node when it announces
+function _mapPulse(vesselId) {
+  const n = _mapNodes.find(n => n.id === vesselId);
+  if (n) n.pulse = 1;
+}
+
+// Hook into the existing addLog to trigger pulse
+// Patch addLog to pulse map nodes on heartbeat events
+const _addLogOrig = addLog;
+addLog = function(type, category, msg, bytes, vesselId) {
+  _addLogOrig(type, category, msg, bytes, vesselId);
+  if (vesselId && (type === 'heartbeat' || type === 'status')) {
+    _mapPulse(vesselId);
+  }
+};
+
+// Re-layout map when vessel list changes
+// Patch renderVesselList to reset map layout on vessel changes
+// Use a flag to avoid infinite recursion — no wrapper, just post-call hook
+const _rvlOrig = renderVesselList;
+function _updateDirectiveTargets(){
+  const sel=document.getElementById('directive-target');if(!sel)return;
+  const prev=sel.value;
+  sel.innerHTML='<option value="all">⧡ All vessels</option>';
+  const fls=new Map();
+  vessels.forEach((v,id)=>{const fl=v.fleet||{};if(fl.name&&fl.role!=='Standalone'){if(!fls.has(fl.name))fls.set(fl.name,[]);fls.get(fl.name).push({id,v});}});
+  fls.forEach((ms,nm)=>{if(ms.length>1){const o=document.createElement('option');o.value='fleet:'+ms.map(m=>m.id).join(',');o.textContent='⧡ Fleet: '+nm+' ('+ms.length+')';sel.appendChild(o);}});
+  const sv=[];vessels.forEach((v,id)=>sv.push({id,v}));sv.sort((a,b)=>(a.v.entityName||'').localeCompare(b.v.entityName||''));
+  sv.forEach(({id,v})=>{const o=document.createElement('option');o.value=id;o.textContent=(v.entityIcon||'◈')+' '+(v.entityName||v.projectName||id.slice(0,12));sel.appendChild(o);});
+  if([...sel.options].some(o=>o.value===prev))sel.value=prev;
+}
+renderVesselList = function() {
+  _rvlOrig();
+  if (_mapView === 'map') _mapNodes = [];
+  _updateDirectiveTargets();
+};
+
+// Handle window resize
+window.addEventListener('resize', () => {
+  if (_mapView === 'map') renderFormationMap();
+});
+_initMapResizeObserver();
+
+function setMastheadTheme(t){
+  document.documentElement.setAttribute('data-theme',t);
+  localStorage.setItem('masthead_theme',t);
+  document.getElementById('masthead-theme-menu').classList.remove('show');
+}
+document.addEventListener('click',e=>{
+  const w=document.getElementById('theme-menu-wrap');
+  if(w&&!w.contains(e.target)){const m=document.getElementById('masthead-theme-menu');if(m)m.classList.remove('show');}
+});
+(function(){const _t=localStorage.getItem('masthead_theme');if(_t)document.documentElement.setAttribute('data-theme',_t);})();
+
 </script>
 </body>
 </html>
