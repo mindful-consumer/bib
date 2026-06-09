@@ -1172,6 +1172,7 @@ Contributions are processed securely via Stripe. Each is recorded in your vessel
 </div>
 <div class="bar-id-name">
 <span class="bar-name" id="biz-name">My Business</span>
+<span id="bar-did-chip" style="display:none;font-size:.55rem;font-family:monospace;color:var(--txt2);opacity:.7;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px" onclick="BOS.open('profile');setTimeout(function(){var el=document.getElementById('profile-fleet-section');if(el)el.scrollIntoView({behavior:'smooth',block:'start'});},300)" title="Click to open Company Profile → Fleet section"></span>
 <span id="sovereign-storage-indicator" title="Sovereign storage active" style="display:none;font-size:.6rem;color:var(--succ);opacity:.75">☁</span>
 <span id="condition-badge" onclick="BOS._showConditions()" title="Vessel conditions — click for detail" style="display:none;font-size:.6rem;font-weight:700;padding:.1rem .3rem;border-radius:4px;cursor:pointer;margin-top:.1rem;white-space:nowrap"></span>
 </div>
@@ -2209,8 +2210,12 @@ VesselManager.init();
             const _reg=JSON.parse(localStorage.getItem('bib_fleet_peers')||'{}');
             const _ex=_reg[_peerVid]||{};
             const _nf=msg.fleet||{};
-            // Preserve existing fleet.name if new heartbeat has empty name
-            const _kf=(_ex.fleet&&_ex.fleet.name&&!_nf.name)?_ex.fleet:_nf;
+            // Preserve existing fleet config, preferring new if it has more data
+            const _kf={
+              name:_nf.name||(_ex.fleet&&_ex.fleet.name)||'',
+              role:_nf.role||(_ex.fleet&&_ex.fleet.role)||'Standalone',
+              parentDid:_nf.parentDid||(_ex.fleet&&_ex.fleet.parentDid)||'',
+            };
             _reg[_peerVid]={
               vesselId:_peerVid,
               did:msg.vesselDid||_ex.did||'',
@@ -2226,12 +2231,33 @@ VesselManager.init();
               logoData:msg.logoData||_ex.logoData||'',
             };
             localStorage.setItem('bib_fleet_peers',JSON.stringify(_reg));
+            // Also register in VesselIdentity DID registry so Fleet screen sees this peer
+            try{
+              if(typeof VesselIdentity!=='undefined'&&msg.vesselDid){
+                VesselIdentity.announcePeer(
+                  msg.vesselDid,
+                  _peerName||'',
+                  msg.entityType||'vessel'
+                );
+                // Also store fleet config so Fleet screen can match fleet relationships
+                try{
+                  const _vr=VesselIdentity._readRegistry();
+                  if(_vr[msg.vesselDid]){
+                    _vr[msg.vesselDid].fleet=_kf;
+                    _vr[msg.vesselDid].vesselId=_peerVid;
+                    localStorage.setItem('vessel_registry_v1',JSON.stringify(_vr));
+                  }
+                }catch(_re){}
+              }
+            }catch(_ae){}
           }catch(e){}
           // Reply with our heartbeat — bidirectional fleet discovery
           if(typeof BOS!=='undefined'){
             setTimeout(()=>{
               try{BOS._formationAnnounce();}catch(e){}
               try{BOS.updCards();}catch(e){}
+              // Live-refresh Fleet screen if open — shows new peer without manual scan
+              if(BOS.cur==='fleet')try{BOS.rFleet();}catch(e){}
             },300);
           }
         }
@@ -2636,6 +2662,17 @@ if(typeof VesselIdentity!=='undefined'){
     if(!BOS.cfg.vesselDid||BOS.cfg.vesselDid!==VesselIdentity.did){
       BOS.cfg.vesselDid=VesselIdentity.did;BOS.save();}
     VesselIdentity.updateRegistry(BOS.cfg.name||'Vessel',BOS.cfg.vesselType||'vessel');
+    // Update DID chip on surface bar
+    const _didChip=document.getElementById('bar-did-chip');
+    if(_didChip&&VesselIdentity.did){
+      const _did=VesselIdentity.did;
+      const _short=_did.slice(0,20)+'…'+_did.slice(-6);
+      const _fleet=BOS.cfg.fleet||{};
+      const _fleetTxt=_fleet.role&&_fleet.role!=='Standalone'?' · '+_fleet.role:'';
+      _didChip.textContent=_short+_fleetTxt;
+      _didChip.title='DID: '+_did+'\nClick to view vessel identity';
+      _didChip.style.display='block';
+    }
     BOS.log('info','⬡ Vessel DID ('+BOS.cfg.name+'): '+VesselIdentity.did);
     try{BOS.updCards();}catch(e){}
     try{BOS._vesselAwareness();}catch(_ae){}
@@ -8435,7 +8472,7 @@ h+='</div></div>';
 h+='</div>';
 
 // ── Fleet / Enterprise Formation
-h+='<h4 style="margin:2rem 0 1rem;padding-bottom:.5rem;border-bottom:2px solid var(--bord)">⬡ Fleet & Enterprise Formation</h4>';
+h+='<h4 id="profile-fleet-section" style="margin:2rem 0 1rem;padding-bottom:.5rem;border-bottom:2px solid var(--bord)">⬡ Fleet & Enterprise Formation</h4>';
 h+='<p style="color:var(--txt2);font-size:.85rem;margin-bottom:1rem">Declare this vessel\'s membership in a larger enterprise formation. Multiple vessels operating as one condition — each maintaining sovereign truth.</p>';
 const _fleet=this.cfg.fleet||{};
 // Fleet status banner
@@ -18477,8 +18514,24 @@ static rFleet(){
   const role=fleet.role||'Standalone';
   const fleetName=fleet.name||'No fleet configured';
 
-  // Gather formation peers from the registry
+  // Gather formation peers — merge DID registry with live heartbeat peers
   const registry=typeof VesselIdentity!=='undefined'?VesselIdentity.getRegistry():{};
+  // Also read live bib_fleet_peers (heartbeat-based, 2-minute TTL)
+  try{
+    const _fpRaw=localStorage.getItem('bib_fleet_peers');
+    const _fpAll=_fpRaw?JSON.parse(_fpRaw):{};
+    const _now2=Date.now();
+    Object.values(_fpAll).forEach(fp=>{
+      if(!fp.did||(fp.lastSeen&&(_now2-fp.lastSeen)>300000))return;
+      if(!registry[fp.did]){
+        registry[fp.did]={
+          did:fp.did,name:fp.name||'',type:fp.type||'vessel',
+          lastSeen:fp.lastSeen,self:false,
+          fleet:fp.fleet||{},vesselId:fp.vesselId
+        };
+      }
+    });
+  }catch(_fpe){}
   const peers=Object.values(registry).filter(p=>!p.self);
   // Group peers by their fleet parentDid
   // A peer is in our fleet if their parentDid === our DID (we are parent)
@@ -18487,15 +18540,27 @@ static rFleet(){
   const fleetParent=fleet.parentDid||myDid;
   const fleetPeers=peers.filter(p=>{
     const pFleet=p.fleet||{};
-    return pFleet.parentDid===fleetParent||
-           pFleet.parentDid===myDid||
-           p.did===fleet.parentDid;
+    // Match 1: by parentDid (strong — DID-verified)
+    if(pFleet.parentDid){
+      if(pFleet.parentDid===fleetParent)return true;
+      if(pFleet.parentDid===myDid)return true;
+      if(p.did===fleet.parentDid)return true;
+    }
+    // Match 2: by fleet name (soft — name-based, when parentDid not yet propagated)
+    const _myFleetName=(fleet.name||'').trim().toLowerCase();
+    const _pFleetName=(pFleet.name||'').trim().toLowerCase();
+    if(_myFleetName&&_pFleetName&&_myFleetName===_pFleetName)return true;
+    return false;
   });
   const otherPeers=peers.filter(p=>!fleetPeers.includes(p));
 
   // Build the consolidated position from mesh peers (best-effort)
   const meshSt=typeof MeshTransport!=='undefined'?MeshTransport.getStatus():{bcPeers:0,rtcPeers:0};
 
+  // Diagnostic data for no-peers panel
+  const _fpRawDebug=localStorage.getItem('bib_fleet_peers')||'{}';
+  let _fpDebug={};try{_fpDebug=JSON.parse(_fpRawDebug);}catch(e){}
+  const _peerCount=Object.keys(_fpDebug).length;
   body.innerHTML=`
 <div style="padding:1rem;max-width:900px;margin:0 auto">
 
@@ -18547,7 +18612,7 @@ ${fresh?'● Active':lastSeen!==null?`${lastSeen}m ago`:'○ Unknown'}</span>
 </div>
 </div>`;
 }).join('')}
-</div>`:'<div style="background:var(--card);border-radius:8px;padding:1rem;margin-bottom:1.25rem;color:var(--txt2);font-size:.85rem;text-align:center">No fleet peers detected yet.<br>Open other fleet vessels in the same browser (or connect to the formation relay) — they will appear here within seconds of announcing.</div>'}
+</div>`:`<div style='background:var(--card);border-radius:8px;padding:1rem;margin-bottom:1rem'><div style='font-weight:600;font-size:.9rem;margin-bottom:.4rem'>No fleet peers matched yet</div><div style='font-size:.72rem;color:var(--txt2);line-height:1.9'><b>${BOS.cfg.name}</b> · DID: <code>${myDid.slice(0,28)}…</code><br>Fleet: <b>${fleet.name||'Not configured'}</b> · Role: ${fleet.role||'Standalone'}<br>Parent DID: <code>${fleet.parentDid||'None — this is the fleet root'}</code><br><br><b>${_peerCount} peer${+_peerCount!==1?'s':''} in heartbeat store:</b><br>${Object.values(_fpDebug).map(fp=>'&nbsp;&nbsp;<b>'+(fp.name||fp.vesselId||'?')+'</b>'+' · fleet: '+(fp.fleet&&fp.fleet.name||'—')+' · parentDid: '+(fp.fleet&&fp.fleet.parentDid||'<em>not set</em>')).join('<br>')}<br><br>Matching fleetParent: <code>${fleetParent.slice(0,32)}…</code></div><div style='margin-top:.6rem;padding:.5rem;background:var(--bg);border-radius:4px;font-size:.7rem;font-family:monospace;word-break:break-all'>Child vessels: set Parent Formation DID = <b>${myDid}</b></div></div>`}
 
 <!-- Other formation peers -->
 ${otherPeers.length>0?`
@@ -18573,11 +18638,12 @@ ${otherPeers.map(p=>`<div style="background:var(--card);border-radius:8px;paddin
 }
 
 static _fleetScan(){
-  if(typeof MeshTransport!=='undefined'){
-    MeshTransport._announce();
-    this.log('info','⬡ Fleet scan announced');
-  }
-  setTimeout(()=>this.rFleet(),1200);
+  // Announce via all channels to trigger peer responses
+  if(typeof MeshTransport!=='undefined')try{MeshTransport._announce();}catch(e){}
+  try{this._formationAnnounce();}catch(e){}
+  this.log('info','⬡ Fleet scan announced — waiting for peer responses');
+  // Re-render after giving peers time to respond
+  setTimeout(()=>this.rFleet(),1500);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -19149,25 +19215,50 @@ static rFormation(){
     {key:'fleet',    icon:'⬡', label:'Fleet',       group:'sovereign',
      stat:()=>{
        try{
-         const _reg=VesselManager.getRegistry?VesselManager.getRegistry():[];
-         if(!_reg||_reg.length===0)return 'Formation ready';
-         const _cur=VesselManager.currentVesselId;
-         const _others=_reg.filter(v=>v.id!==_cur);
-         const _names=_others.map(v=>v.name||'Vessel').slice(0,2);
-         if(_others.length===0)return 'Solo vessel · no peers';
-         return _others.length+' peer'+(_others.length!==1?'s':'')+': '+_names.join(', ')+(_others.length>2?'…':'');
+         // Read live fleet peers — updated on every heartbeat
+         const _raw=localStorage.getItem('bib_fleet_peers');
+         const _peers=_raw?JSON.parse(_raw):{};
+         const _now=Date.now();
+         const _ttl=300000; // 5-minute activity window — stable between heartbeats
+         const _allActive=Object.values(_peers).filter(p=>p.lastSeen&&(_now-p.lastSeen)<_ttl);
+         // Deduplicate by DID — two sessions of same vessel = one vessel
+         const _seenDids=new Set();
+         const _active=_allActive.filter(p=>{
+           const _k=p.did||p.vesselId;
+           if(_seenDids.has(_k))return false;
+           _seenDids.add(_k);return true;
+         });
+         if(_active.length===0){
+           // Fallback: check vessel registry for named vessels (same device multi-vessel)
+           const _reg=VesselManager.getRegistry?VesselManager.getRegistry():[];
+           const _cur=VesselManager.currentVesselId;
+           const _others=_reg.filter(v=>v.id!==_cur);
+           if(_others.length===0)return 'Solo vessel';
+           const _names=_others.map(v=>v.name||'Vessel').slice(0,2);
+           return _others.length+' vessel'+(_others.length!==1?'s':'')+' (same device): '+_names.join(', ');
+         }
+         const _names=_active.map(p=>p.name||p.type||'Vessel').slice(0,2);
+         return _active.length+' live peer'+(_active.length!==1?'s':'')+': '+_names.join(', ')+(_active.length>2?'…':'');
        }catch(e){return 'Formation ready';}
      }},
     {key:'mesh',     icon:'⬡⬡',label:'Mesh',        group:'sovereign',
      stat:()=>{
-       const _p=document.getElementById('mesh-status');
-       const _raw=_p?_p.textContent.trim():'';
-       if(!_raw||_raw==='Offline')return 'P2P · Offline';
-       // Parse peer count from mesh-status text like '3 peers · 3 BC'
-       const _peerM=_raw.match(/(\d+)\s*peer/);
-       const _peers=_peerM?parseInt(_peerM[1]):0;
-       if(_peers>0)return _peers+' peer'+(_peers!==1?'s':'')+' connected';
-       return 'P2P · '+(_raw.includes('Listen')?'Listening':'Active');
+       try{
+         // Read directly from MeshTransport — same source as Mesh card
+         const _st=typeof MeshTransport!=='undefined'?MeshTransport.getStatus():{bcPeers:0,rtcPeers:0};
+         const _total=(_st.bcPeers||0)+(_st.rtcPeers||0);
+         // Count unique DIDs — deduplicate same-vessel multi-tab sessions
+         const _meshPeers=typeof MeshTransport!=='undefined'&&MeshTransport.getPeers?MeshTransport.getPeers():null;
+         if(_meshPeers){
+           const _uniq=new Set(Object.values(_meshPeers).map(p=>p.did||p.id||p)).size;
+           if(_uniq>0)return _uniq+' unique peer'+(_uniq!==1?'s':'')+' · P2P active';
+         }
+         if(_total>0)return _total+' session'+(_total!==1?'s':'')+' · P2P active';
+         return 'P2P · Listening';
+       }catch(e){
+         const _p=document.getElementById('mesh-status');
+         return _p?_p.textContent.trim():'P2P network';
+       }
      }},
     {key:'know',     icon:'📖',label:'Knowledge',   group:'sovereign',
      stat:()=>{
@@ -19321,8 +19412,8 @@ static rFormation(){
   expBody.appendChild(wrap);
 
   // Update surface card
+  const fss=document.getElementById('formation-summary');
   if(fss)fss.textContent=_domains.length+' domains · '+(_condCount?_condCount+(_condCount!==1?' conditions':' condition'):'all clear');
-  if(fss)fss.textContent=_condCount+' condition'+(_condCount!==1?'s':'')+' · '+_stableCount+' stable';
 }
 
 
@@ -23242,7 +23333,7 @@ this.log('success','System log exported');
   static _formationAnnounce(){
     // ── Always broadcast on BroadcastChannel for same-browser fleet visibility
     try{
-      const _payload=this._buildFormationPayload();
+      const _payload=this._formationPayload();
       if(typeof BroadcastChannel!=='undefined'){
         const _fbc=new BroadcastChannel('spm-formation');
         _fbc.postMessage(_payload);
