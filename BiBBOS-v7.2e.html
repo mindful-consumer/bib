@@ -2205,7 +2205,8 @@ VesselManager.init();
         const _myVid=typeof VesselManager!=='undefined'?VesselManager.currentVesselId:'';
         const _peerName=msg.entityName||msg.projectName||'';
         // Skip if this is our own heartbeat (same vesselId)
-        if(_peerVid&&_peerVid!==_myVid){
+        const _myDid=typeof VesselIdentity!=='undefined'?VesselIdentity.did:'';
+        if(_peerVid&&_peerVid!==_myVid&&(!msg.vesselDid||msg.vesselDid!==_myDid)){
           try{
             const _reg=JSON.parse(localStorage.getItem('bib_fleet_peers')||'{}');
             const _ex=_reg[_peerVid]||{};
@@ -17199,8 +17200,40 @@ static rMesh(){
   const body=document.getElementById('exp-body');if(!body)return;
   const titleEl=document.getElementById('exp-title');if(titleEl)titleEl.innerHTML=(BOS._navStack&&BOS._navStack.length>1?'<button onclick="BOS.back()" style="background:none;border:none;cursor:pointer;font-size:1rem;color:var(--p);padding:0 .5rem 0 0">← Back</button>':'')+'⬡⬡ Mesh Network';
   const st=typeof MeshTransport!=='undefined'?MeshTransport.getStatus():{ready:false,bcPeers:0,rtcPeers:0,totalPeers:0,clock:{}};
-  const bcPeers=Object.values(MeshTransport?._bcPeers||{}).filter(p=>Date.now()-p.lastSeen<30000);
+  // Trigger announce to wake peers before rendering
+  try{if(typeof MeshTransport!=='undefined')MeshTransport._announce();}catch(e){}
+  const _myDidMesh=typeof VesselIdentity!=='undefined'?VesselIdentity.did:'';
+  // Live BC peers from memory (90s window) — exclude self
+  const _liveBCPeers=Object.values(MeshTransport?._bcPeers||{}).filter(p=>
+    p.did&&p.did!==_myDidMesh&&Date.now()-p.lastSeen<90000);
+  // Supplement with bib_fleet_peers (5-min persistent store)
+  // Shows peers seen recently even if not in current memory
+  const _liveKeys=new Set(_liveBCPeers.map(p=>p.did));
+  let _extraPeers=[];
+  try{
+    const _fp2=JSON.parse(localStorage.getItem('bib_fleet_peers')||'{}');
+    _extraPeers=Object.values(_fp2).filter(p=>
+      p.did&&p.did!==_myDidMesh&&
+      !_liveKeys.has(p.did)&&
+      p.lastSeen&&(Date.now()-p.lastSeen)<300000
+    ).map(p=>({sid:p.vesselId||p.did,did:p.did,lastSeen:p.lastSeen,transport:'fleet',stale:true}));
+  }catch(e){}
+  // Deduplicate merged list by DID — prefer live over stale
+  const _seenDids2=new Set();
+  const bcPeers=[..._liveBCPeers,..._extraPeers].filter(p=>{
+    if(!p.did||_seenDids2.has(p.did))return false;
+    _seenDids2.add(p.did);return true;
+  });
   const rtcPeers=Object.keys(MeshTransport?._channels||{}).filter(d=>MeshTransport._channels[d].readyState==='open');
+  // Build DID→name lookup from bib_fleet_peers for human-readable display
+  let _meshNames={};try{
+    // Primary: bib_fleet_peers (heartbeat-based, has vessel names)
+    const _fp=JSON.parse(localStorage.getItem('bib_fleet_peers')||'{}');
+    Object.values(_fp).forEach(p=>{if(p.did&&p.name)_meshNames[p.did]=p.name;});
+    // Fallback: vessel_registry_v1 (DID registry)
+    const _vr=JSON.parse(localStorage.getItem('vessel_registry_v1')||'{}');
+    Object.values(_vr).forEach(p=>{if(p.did&&p.name&&!_meshNames[p.did])_meshNames[p.did]=p.name;});
+  }catch(e){}
   body.innerHTML=`
 <div style="padding:1rem;max-width:800px;margin:0 auto">
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
@@ -17234,15 +17267,15 @@ static rMesh(){
 ${bcPeers.length>0?`<div style="background:var(--card);border-radius:8px;padding:.75rem;margin-bottom:.75rem">
 <h4 style="margin:0 0 .5rem">⬡ BroadcastChannel Peers (${bcPeers.length})</h4>
 ${bcPeers.map(p=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:.3rem 0;border-bottom:1px solid var(--border)">
-<div><div style="font-size:.8rem;font-family:monospace">${p.did}</div><div style="font-size:.7rem;color:var(--txt2)">Session: ${p.sid||'—'} · ${new Date(p.lastSeen).toLocaleTimeString()}</div></div>
+<div><div style="font-size:.85rem;font-weight:600">${_meshNames[p.did]||'Unknown Vessel'}${p.stale?' <span style="font-size:.65rem;color:var(--muted);font-weight:400">(recently seen)</span>':''}</div><div style="font-size:.65rem;font-family:monospace;color:var(--txt2);opacity:.7">${p.did?p.did.slice(0,32)+'…':''}</div><div style="font-size:.7rem;color:var(--txt2)">${p.lastSeen?'Last seen '+new Date(p.lastSeen).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):''}</div></div>
 <div style="display:flex;gap:.4rem;align-items:center">
-<span style="font-size:.7rem;padding:.15rem .4rem;border-radius:4px;background:rgba(74,222,128,.12);color:var(--succ)">● Active</span>
+${!p.stale?`<span style="font-size:.7rem;padding:.15rem .4rem;border-radius:4px;background:rgba(74,222,128,.12);color:var(--succ)">● Active</span>`:''}
 <button class="btn btn-sec" style="font-size:.72rem;padding:.2rem .4rem" onclick="MeshTransport.connectPeer('${p.did}')">WebRTC ↗</button>
 </div></div>`).join('')}
 </div>`:'<div style="background:var(--card);border-radius:8px;padding:1rem;margin-bottom:.75rem;color:var(--txt2);font-size:.85rem;text-align:center">No BC peers yet. Open this vessel in a second tab (same origin) — peers appear within 3–6 seconds.</div>'}
 ${rtcPeers.length>0?`<div style="background:var(--card);border-radius:8px;padding:.75rem;margin-bottom:.75rem">
 <h4 style="margin:0 0 .5rem">⬡⬡ WebRTC Peers (${rtcPeers.length})</h4>
-${rtcPeers.map(did=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:.3rem 0"><div style="font-size:.8rem;font-family:monospace">${did}</div><span style="font-size:.7rem;padding:.15rem .4rem;border-radius:4px;background:rgba(59,130,246,.12);color:var(--info)">⬡⬡ WebRTC</span></div>`).join('')}
+${rtcPeers.map(did=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:.35rem 0;border-bottom:1px solid var(--border2)"><div><div style="font-size:.85rem;font-weight:600">${_meshNames[did]||'Unknown Vessel'}</div><div style="font-size:.65rem;font-family:monospace;color:var(--txt2);opacity:.7">${did?did.slice(0,32)+'…':''}</div></div><span style="font-size:.72rem;color:var(--succ)">● Active</span></div>`).join('')}
 </div>`:''}
 <div style="background:var(--card);border-radius:8px;padding:.75rem">
 <h4 style="margin:0 0 .5rem">Vector Clock (CRDT State)</h4>
@@ -18523,7 +18556,14 @@ static rFleet(){
     const _now2=Date.now();
     Object.values(_fpAll).forEach(fp=>{
       if(!fp.did||(fp.lastSeen&&(_now2-fp.lastSeen)>300000))return;
-      if(!registry[fp.did]){
+      // Always update fleet config — announcePeer() creates entries without fleet
+      if(registry[fp.did]){
+        // Update fleet config if heartbeat has richer data
+        if(fp.fleet&&(fp.fleet.parentDid||fp.fleet.name)){
+          registry[fp.did].fleet=fp.fleet;
+        }
+        if(fp.name&&!registry[fp.did].name)registry[fp.did].name=fp.name;
+      } else {
         registry[fp.did]={
           did:fp.did,name:fp.name||'',type:fp.type||'vessel',
           lastSeen:fp.lastSeen,self:false,
@@ -18532,7 +18572,15 @@ static rFleet(){
       }
     });
   }catch(_fpe){}
-  const peers=Object.values(registry).filter(p=>!p.self);
+  const _myVesselId=typeof VesselManager!=='undefined'?VesselManager.currentVesselId:'';
+  const _myName=(BOS&&BOS.cfg&&BOS.cfg.name)||'';
+  const peers=Object.values(registry).filter(p=>{
+    if(p.self)return false; // DID registry self flag
+    if(p.did&&p.did===myDid)return false; // Same DID = same vessel
+    if(p.vesselId&&p.vesselId===_myVesselId)return false; // Same vesselId
+    if(_myName&&p.name&&p.name===_myName&&p.did===myDid)return false; // Same name+DID
+    return true;
+  });
   // Group peers by their fleet parentDid
   // A peer is in our fleet if their parentDid === our DID (we are parent)
   // OR their parentDid === our parentDid (siblings)
@@ -18549,10 +18597,19 @@ static rFleet(){
     // Match 2: by fleet name (soft — name-based, when parentDid not yet propagated)
     const _myFleetName=(fleet.name||'').trim().toLowerCase();
     const _pFleetName=(pFleet.name||'').trim().toLowerCase();
-    if(_myFleetName&&_pFleetName&&_myFleetName===_pFleetName)return true;
+    // Fleet name match — only match if neither is the fleet parent vessel
+    // (parent vessel shows in header, not in peer list)
+    const _isParent=p.did===fleet.parentDid;
+    if(!_isParent&&_myFleetName&&_pFleetName&&(
+      _myFleetName===_pFleetName||
+      _myFleetName.includes(_pFleetName)||
+      _pFleetName.includes(_myFleetName)
+    ))return true;
     return false;
   });
-  const otherPeers=peers.filter(p=>!fleetPeers.includes(p));
+  // Separate parent vessel from other peers
+  const parentPeer=!isParent?peers.find(p=>p.did&&fleet.parentDid&&p.did===fleet.parentDid):null;
+  const otherPeers=peers.filter(p=>!fleetPeers.includes(p)&&p!==parentPeer);
 
   // Build the consolidated position from mesh peers (best-effort)
   const meshSt=typeof MeshTransport!=='undefined'?MeshTransport.getStatus():{bcPeers:0,rtcPeers:0};
@@ -18593,6 +18650,17 @@ ${myDid?`<div style="font-size:.7rem;font-family:monospace;color:var(--txt2);opa
 
 <!-- Fleet peers -->
 ${fleetPeers.length>0?`
+${parentPeer?`
+<div style='margin-bottom:1rem'>
+<h4 style='margin:0 0 .75rem;color:var(--gold)'>⬡ Parent Vessel</h4>
+<div style='background:var(--card);border-radius:8px;padding:.75rem 1rem;border-left:4px solid var(--gold);display:flex;align-items:center;justify-content:space-between'>
+<div>
+<div style='font-weight:700'>${parentPeer.name||'Parent Vessel'}</div>
+<div style='font-size:.72rem;color:var(--txt2)'>${(parentPeer.fleet&&parentPeer.fleet.role)||'Headquarters'}</div>
+<div style='font-size:.65rem;font-family:monospace;color:var(--txt2)'>${parentPeer.did?parentPeer.did.slice(0,40)+'…':''}</div>
+</div>
+<span style='font-size:.72rem;color:var(--gold);font-weight:600'>PARENT</span>
+</div></div>`:''}
 <h4 style="margin:0 0 .75rem">⬡ Fleet Formation (${fleetPeers.length} peer${fleetPeers.length!==1?'s':''})</h4>
 <div style="display:grid;gap:.6rem;margin-bottom:1.25rem">
 ${fleetPeers.map(p=>{
