@@ -298,7 +298,36 @@ Then in BiBBOS: Maintenance → Formation Channel → enter `ws://[LAN-IP]:8080`
 ## Changelog
 
 ### v7.2e — June 2026 (current)
-**The Stewardship Cultivation Release**
+**The Stewardship Cultivation + Fleet Formation Release**
+
+**Fleet & Enterprise Formation — fully operational:**
+- Root cause of silent heartbeats found and fixed — `_buildFormationPayload` was undefined, causing every `_formationAnnounce()` call to fail silently. Fleet detection was impossible until this was corrected.
+- Fleet peer matching: DID-based (authoritative) + fleet name fallback (tolerant of minor naming differences)
+- Parent vessel shown in dedicated gold section for child vessels — parent is not a peer, it is the formation root
+- Self-exclusion from fleet and mesh peer lists by DID — vessels never see themselves as peers
+- Fleet screen live-refreshes on incoming heartbeat — no manual scan needed
+- Fleet diagnostic panel shows exact match data when no peers found
+- Registry merge always updates fleet config — `announcePeer()` entries enriched by heartbeat data
+- Fleet TTL 5 minutes — stable between 15-second heartbeat intervals
+
+**Mesh Network — human-readable:**
+- Vessel names shown as primary identifier — DID secondary
+- Live BC peers + `bib_fleet_peers` supplement (5-minute persistent TTL)
+- Wake-on-open: `MeshTransport._announce()` fires when Mesh screen opens
+- Deduplication by DID after live+persistent merge
+- Stale peers labeled `(recently seen)` — Active badge hidden, WebRTC still available
+- Background tab throttling handled — 90-second live window
+
+**Surface & Navigation:**
+- DID chip in header bar — shows truncated DID + fleet role
+- Clicking DID chip opens Company Profile and scrolls directly to Fleet section
+- Formation View `fss` ReferenceError fixed
+- Fleet `noPeersPanel` and `_peerCount` ReferenceError fixed
+
+**Data Integrity:**
+- Orphaned records condition in `_watchConditions` — surfaces in Formation + bar badge
+- Cleanup shows affected invoice numbers before proceeding — no blind destructive operations
+- Maintenance tile shows storage %, orphan count alongside backup recency
 
 - **Six Stewardship Cultivation Environments** — Condition Age, Metric Trajectory, Formation View, Observation Prompts, Intention-Action Visibility, Sovereign Reflection
 - **Formation View** — 22 domains in 5 columns, fixed no-scroll viewport, live signals per tile, condition age on tiles, last-observed timestamp, navigable
